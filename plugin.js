@@ -615,7 +615,7 @@ function WorkflowLibraryPage({ ctx }) {
     refreshWorkflows();
   }, [refreshWorkflows]);
   function openWorkflow(id) {
-    host.navigate(`/workflow-editor?id=${encodeURIComponent(id)}`);
+    host.navigate(`/workflow-studio?workflowId=${encodeURIComponent(id)}`);
   }
   const loader = pending ? /* @__PURE__ */ jsx10(PageLoader, {}) : error ? /* @__PURE__ */ jsx10(PanelEmpty, {
     icon: "error",
@@ -668,12 +668,7 @@ function WorkflowLibraryPage({ ctx }) {
 }
 
 // desktop/workflows/ui/workflow-studio.tsx
-import {
-  Button as Button5,
-  Codicon as Codicon4,
-  SandboxedFrame,
-  host as host2
-} from "@hermes/plugin-sdk";
+import { Button as Button5, Codicon as Codicon4, SandboxedFrame, host as host2 } from "@hermes/plugin-sdk";
 import {
   useCallback as useCallback2,
   useEffect as useEffect3,
@@ -774,7 +769,7 @@ function WorkspaceActions({ onDelete, disabled }) {
         })
       }),
       open ? /* @__PURE__ */ jsx11("div", {
-        className: "absolute right-0 top-full z-50 mt-1 min-w-44 rounded-md border border-(--ui-border) bg-popover p-1 text-popover-foreground shadow-md",
+        className: "absolute right-0 top-full z-50 mt-1 min-w-44 rounded-md bg-popover p-1 text-popover-foreground shadow-md",
         role: "menu",
         children: /* @__PURE__ */ jsxs9("button", {
           className: "flex w-full items-center gap-2 rounded-[3px] px-2.5 py-1.5 text-left text-xs text-destructive transition-colors hover:bg-destructive/10 focus-visible:bg-(--ui-control-active-background) focus-visible:outline-hidden",
@@ -842,7 +837,7 @@ function DeleteWorkspaceDialog({
                 onConfirm().catch(() => setBusy(false));
               },
               type: "button",
-              children: busy ? "Deleting…" : "Delete workspace"
+              children: busy ? "Deleting..." : "Delete workspace"
             })
           ]
         })
@@ -853,28 +848,21 @@ function DeleteWorkspaceDialog({
 function WorkflowStudioPage({ ctx }) {
   const frameRef = useRef2(null);
   const workflowRef = useRef2(null);
-  const workflowId = new URLSearchParams(window.location.search).get("id");
+  const hashQuery = window.location.hash.includes("?") ? window.location.hash.slice(window.location.hash.indexOf("?")) : "";
+  const workflowId = new URLSearchParams(hashQuery).get("workflowId") ?? new URLSearchParams(window.location.search).get("workflowId");
   const studioUrl = workflowId ? `${STUDIO_URL}/?workflowId=${encodeURIComponent(workflowId)}` : STUDIO_URL;
-  const fallbackName = workflowId ? `workspace-${workflowId}` : "Workflow Studio";
+  const name = workflowId ? `workspace-${workflowId}` : "Workflow Studio";
   const [workflow, setWorkflow] = useState2(null);
-  const [nameDraft, setNameDraft] = useState2(fallbackName);
+  const [nameDraft, setNameDraft] = useState2(name);
   const [loading, setLoading] = useState2(false);
   const [nameStatus, setNameStatus] = useState2("saved");
   const [deleteOpen, setDeleteOpen] = useState2(false);
   useEffect3(() => {
     let active = true;
     if (!workflowId) {
-      createWorkflow(ctx.files).then((created) => {
-        if (!active)
-          return;
-        workflowRef.current = created;
-        setWorkflow(created);
-        setNameDraft(created.name || `workspace-${created.id}`);
-        setNameStatus("saved");
-        host2.navigate(`/workflow-editor?id=${encodeURIComponent(created.id)}`);
-      }).finally(() => {
-        if (active)
-          setLoading(false);
+      host2.notify({
+        kind: "warning",
+        message: "Open a workflow from the Workflows library."
       });
       return () => {
         active = false;
@@ -892,7 +880,7 @@ function WorkflowStudioPage({ ctx }) {
         return;
       const fallback = {
         id: workflowId,
-        name: fallbackName,
+        name,
         createdAt: new Date().toISOString(),
         updatedAt: new Date().toISOString(),
         nodes: [],
@@ -900,7 +888,7 @@ function WorkflowStudioPage({ ctx }) {
       };
       workflowRef.current = fallback;
       setWorkflow(fallback);
-      setNameDraft(fallbackName);
+      setNameDraft(name);
     }).finally(() => {
       if (active)
         setLoading(false);
@@ -908,8 +896,8 @@ function WorkflowStudioPage({ ctx }) {
     return () => {
       active = false;
     };
-  }, [ctx.files, fallbackName, workflowId]);
-  const saveName = useCallback2(async (name) => {
+  }, [ctx.files, name, workflowId]);
+  const saveName = useCallback2(async (name2) => {
     const current = workflowRef.current;
     if (!current || !workflowId)
       return;
@@ -919,11 +907,11 @@ function WorkflowStudioPage({ ctx }) {
         id: current.id,
         nodes: current.nodes,
         edges: current.edges,
-        name
+        name: name2
       });
       workflowRef.current = saved;
       setWorkflow(saved);
-      setNameDraft(saved.name || name);
+      setNameDraft(saved.name || name2);
       setNameStatus("saved");
     } catch {
       setNameStatus("idle");
@@ -931,15 +919,15 @@ function WorkflowStudioPage({ ctx }) {
   }, [ctx.files, workflowId]);
   useEffect3(() => {
     const current = workflowRef.current;
-    const normalized = nameDraft.trim() || fallbackName;
-    if (!current || normalized === (current.name || fallbackName))
+    const normalized = nameDraft.trim() || name;
+    if (!current || normalized === (current.name || name))
       return;
     setNameStatus("saving");
     const timer = window.setTimeout(() => {
       saveName(normalized);
-    }, 500);
+    }, 5000);
     return () => window.clearTimeout(timer);
-  }, [fallbackName, nameDraft, saveName, workflow]);
+  }, [name, nameDraft, saveName, workflow]);
   useEffect3(() => {
     const handleMessage = async (event) => {
       const frameWindow = frameRef.current?.contentWindow;
@@ -989,7 +977,7 @@ function WorkflowStudioPage({ ctx }) {
             autoCapitalize: "off",
             autoComplete: "off",
             autoCorrect: "off",
-            className: "h-7 min-w-0 max-w-sm flex-1 rounded-[3px] border border-transparent bg-transparent px-1 text-sm font-semibold text-foreground outline-hidden placeholder:text-(--ui-text-tertiary) focus:border-(--ui-border) focus:bg-(--ui-bg-tertiary) focus:ring-1 focus:ring-ring",
+            className: "h-7 min-w-0 max-w-sm rounded-[3px] border border-transparent bg-transparent px-1 text-sm font-semibold text-foreground outline-hidden placeholder:text-(--ui-text-tertiary) focus:border-(--ui-border) focus:bg-(--ui-bg-tertiary) focus:ring-1 focus:ring-ring",
             disabled: loading || !workflowId,
             onChange: (event) => setNameDraft(event.target.value),
             onKeyDown: (event) => {
@@ -997,7 +985,7 @@ function WorkflowStudioPage({ ctx }) {
                 event.currentTarget.blur();
             },
             spellCheck: false,
-            value: nameDraft
+            value: `${nameDraft}`
           }),
           /* @__PURE__ */ jsx11("span", {
             className: "text-[0.6875rem] text-(--ui-text-tertiary)",
@@ -1049,9 +1037,9 @@ var plugin_default = {
         render: () => jsx12(WorkflowLibraryPage, { ctx })
       },
       {
-        id: "workflow-editor-page",
+        id: "workflow-studio-page",
         area: ROUTES_AREA,
-        data: { path: "/workflow-editor" },
+        data: { path: "/workflow-studio" },
         render: () => jsx12(WorkflowStudioPage, { ctx })
       },
       {

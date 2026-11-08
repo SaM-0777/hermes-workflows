@@ -98,7 +98,7 @@ export async function createWorkflow(
 ): Promise<WorkflowDocument> {
   const id = crypto.randomUUID();
   const now = new Date().toISOString();
-  const defaultName = `workspace-${id}`;
+  const defaultName = `workflow-${id}`;
   const workflow: WorkflowDocument = {
     id,
     name: name?.trim() ? name.trim() : defaultName,

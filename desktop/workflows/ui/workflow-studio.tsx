@@ -1,9 +1,4 @@
-import {
-  Button,
-  Codicon,
-  SandboxedFrame,
-  host,
-} from "@hermes/plugin-sdk";
+import { Button, Codicon, SandboxedFrame, host } from "@hermes/plugin-sdk";
 import {
   useCallback,
   useEffect,
@@ -23,7 +18,6 @@ import {
   type WorkflowDocument,
 } from "../lib/workflow-validation";
 import {
-  createWorkflow,
   deleteWorkflow,
   loadWorkflow,
   saveWorkflow,
@@ -40,12 +34,12 @@ export interface WorkflowStudioPageProps {
   ctx: WorkflowStudioContext;
 }
 
-interface WorkspaceActionsProps {
+interface WorkflowActionsProps {
   onDelete: () => void;
   disabled: boolean;
 }
 
-function WorkspaceActions({ onDelete, disabled }: WorkspaceActionsProps) {
+function WorkflowActions({ onDelete, disabled }: WorkflowActionsProps) {
   const [open, setOpen] = useState(false);
   const menuRef = useRef<HTMLDivElement | null>(null);
 
@@ -57,7 +51,8 @@ function WorkspaceActions({ onDelete, disabled }: WorkspaceActionsProps) {
     };
 
     document.addEventListener("pointerdown", closeOnOutsidePointer);
-    return () => document.removeEventListener("pointerdown", closeOnOutsidePointer);
+    return () =>
+      document.removeEventListener("pointerdown", closeOnOutsidePointer);
   }, [open]);
 
   return (
@@ -74,7 +69,7 @@ function WorkspaceActions({ onDelete, disabled }: WorkspaceActionsProps) {
       </button>
       {open ? (
         <div
-          className="absolute right-0 top-full z-50 mt-1 min-w-44 rounded-md border border-(--ui-border) bg-popover p-1 text-popover-foreground shadow-md"
+          className="absolute right-0 top-full z-50 mt-1 min-w-44 rounded-md bg-popover p-1 text-popover-foreground shadow-md"
           role="menu"
         >
           <button
@@ -95,17 +90,17 @@ function WorkspaceActions({ onDelete, disabled }: WorkspaceActionsProps) {
   );
 }
 
-interface DeleteWorkspaceDialogProps {
+interface DeleteWorkflowDialogProps {
   open: boolean;
   onClose: () => void;
   onConfirm: () => Promise<void>;
 }
 
-function DeleteWorkspaceDialog({
+function DeleteWorkflowDialog({
   open,
   onClose,
   onConfirm,
-}: DeleteWorkspaceDialogProps) {
+}: DeleteWorkflowDialogProps) {
   const [busy, setBusy] = useState(false);
 
   if (!open) return null;
@@ -118,9 +113,9 @@ function DeleteWorkspaceDialog({
     >
       <div className="w-full max-w-md rounded-lg border border-(--ui-border) bg-popover p-4 text-popover-foreground shadow-xl">
         <div className="space-y-1">
-          <h2 className="text-sm font-semibold">Delete workspace?</h2>
+          <h2 className="text-sm font-semibold">Delete workflow?</h2>
           <p className="text-xs leading-relaxed text-(--ui-text-secondary)">
-            This workspace will be moved to trash.
+            This workflow will be moved to trash.
           </p>
         </div>
         <div className="mt-5 flex justify-end gap-2">
@@ -141,7 +136,7 @@ function DeleteWorkspaceDialog({
             }}
             type="button"
           >
-            {busy ? "Deleting…" : "Delete workspace"}
+            {busy ? "Deleting..." : "Delete workflow"}
           </button>
         </div>
       </div>
@@ -152,34 +147,32 @@ function DeleteWorkspaceDialog({
 export function WorkflowStudioPage({ ctx }: WorkflowStudioPageProps) {
   const frameRef = useRef<HTMLIFrameElement | null>(null);
   const workflowRef = useRef<WorkflowDocument | null>(null);
-  const workflowId = new URLSearchParams(window.location.search).get("id");
+  const hashQuery = window.location.hash.includes("?")
+    ? window.location.hash.slice(window.location.hash.indexOf("?"))
+    : "";
+  const workflowId =
+    new URLSearchParams(hashQuery).get("workflowId") ??
+    new URLSearchParams(window.location.search).get("workflowId");
   const studioUrl = workflowId
     ? `${STUDIO_URL}/?workflowId=${encodeURIComponent(workflowId)}`
     : STUDIO_URL;
-  const fallbackName = workflowId ? `workspace-${workflowId}` : "Workflow Studio";
+  const name = workflowId ? `workflow-${workflowId}` : "Workflow Studio";
   const [workflow, setWorkflow] = useState<WorkflowDocument | null>(null);
-  const [nameDraft, setNameDraft] = useState(fallbackName);
+  const [nameDraft, setNameDraft] = useState(name);
   const [loading, setLoading] = useState(false);
-  const [nameStatus, setNameStatus] = useState<"idle" | "saving" | "saved">("saved");
+  const [nameStatus, setNameStatus] = useState<"idle" | "saving" | "saved">(
+    "saved",
+  );
   const [deleteOpen, setDeleteOpen] = useState(false);
 
   useEffect(() => {
     let active = true;
 
     if (!workflowId) {
-      void createWorkflow(ctx.files)
-        .then((created) => {
-          if (!active) return;
-          workflowRef.current = created;
-          setWorkflow(created);
-          setNameDraft(created.name || `workspace-${created.id}`);
-          setNameStatus("saved");
-          host.navigate(`/workflow-editor?id=${encodeURIComponent(created.id)}`);
-        })
-        .finally(() => {
-          if (active) setLoading(false);
-        });
-
+      host.notify({
+        kind: "warning",
+        message: "Open a workflow from the Workflows library.",
+      });
       return () => {
         active = false;
       };
@@ -190,14 +183,14 @@ export function WorkflowStudioPage({ ctx }: WorkflowStudioPageProps) {
         if (!active) return;
         workflowRef.current = loaded;
         setWorkflow(loaded);
-        setNameDraft(loaded.name || `workspace-${loaded.id}`);
+        setNameDraft(loaded.name || `workflow-${loaded.id}`);
         setNameStatus("saved");
       })
       .catch(() => {
         if (!active) return;
         const fallback: WorkflowDocument = {
           id: workflowId,
-          name: fallbackName,
+          name: name,
           createdAt: new Date().toISOString(),
           updatedAt: new Date().toISOString(),
           nodes: [],
@@ -205,7 +198,7 @@ export function WorkflowStudioPage({ ctx }: WorkflowStudioPageProps) {
         };
         workflowRef.current = fallback;
         setWorkflow(fallback);
-        setNameDraft(fallbackName);
+        setNameDraft(name);
       })
       .finally(() => {
         if (active) setLoading(false);
@@ -214,7 +207,7 @@ export function WorkflowStudioPage({ ctx }: WorkflowStudioPageProps) {
     return () => {
       active = false;
     };
-  }, [ctx.files, fallbackName, workflowId]);
+  }, [ctx.files, name, workflowId]);
 
   const saveName = useCallback(
     async (name: string) => {
@@ -242,16 +235,16 @@ export function WorkflowStudioPage({ ctx }: WorkflowStudioPageProps) {
 
   useEffect(() => {
     const current = workflowRef.current;
-    const normalized = nameDraft.trim() || fallbackName;
-    if (!current || normalized === (current.name || fallbackName)) return;
+    const normalized = nameDraft.trim() || name;
+    if (!current || normalized === (current.name || name)) return;
 
     setNameStatus("saving");
     const timer = window.setTimeout(() => {
       void saveName(normalized);
-    }, 500);
+    }, 5000);
 
     return () => window.clearTimeout(timer);
-  }, [fallbackName, nameDraft, saveName, workflow]);
+  }, [name, nameDraft, saveName, workflow]);
 
   useEffect(() => {
     const handleMessage = async (event: MessageEvent) => {
@@ -263,10 +256,7 @@ export function WorkflowStudioPage({ ctx }: WorkflowStudioPageProps) {
 
       try {
         const result = await handleWorkflowRequest(ctx.files, message);
-        if (
-          isRecord(result.workflow) &&
-          isWorkflowDocument(result.workflow)
-        ) {
+        if (isRecord(result.workflow) && isWorkflowDocument(result.workflow)) {
           workflowRef.current = result.workflow;
           setWorkflow(result.workflow);
         }
@@ -277,7 +267,8 @@ export function WorkflowStudioPage({ ctx }: WorkflowStudioPageProps) {
       } catch (error) {
         sendResponse(frameWindow, message.requestId, `${message.type}_RESULT`, {
           ok: false,
-          error: error instanceof Error ? error.message : "Unknown workflow error",
+          error:
+            error instanceof Error ? error.message : "Unknown workflow error",
         });
       }
     };
@@ -298,29 +289,38 @@ export function WorkflowStudioPage({ ctx }: WorkflowStudioPageProps) {
           <Codicon name="chevron-left" size="0.875rem" />
         </Button>
         <input
-          aria-label="Workspace name"
+          aria-label="Workflow name"
           autoCapitalize="off"
           autoComplete="off"
           autoCorrect="off"
-          className="h-7 min-w-0 max-w-sm flex-1 rounded-[3px] border border-transparent bg-transparent px-1 text-sm font-semibold text-foreground outline-hidden placeholder:text-(--ui-text-tertiary) focus:border-(--ui-border) focus:bg-(--ui-bg-tertiary) focus:ring-1 focus:ring-ring"
+          className="h-7 min-w-0 max-w-sm rounded-[3px] border border-transparent bg-transparent px-1 text-sm font-semibold text-foreground outline-hidden placeholder:text-(--ui-text-tertiary) focus:border-(--ui-border) focus:bg-(--ui-bg-tertiary) focus:ring-1 focus:ring-ring"
           disabled={loading || !workflowId}
-          onChange={(event: ChangeEvent<HTMLInputElement>) => setNameDraft(event.target.value)}
+          onChange={(event: ChangeEvent<HTMLInputElement>) =>
+            setNameDraft(event.target.value)
+          }
           onKeyDown={(event: KeyboardEvent<HTMLInputElement>) => {
             if (event.key === "Enter") event.currentTarget.blur();
           }}
           spellCheck={false}
-          value={nameDraft}
+          value={`${nameDraft}`}
         />
-        <span className="text-[0.6875rem] text-(--ui-text-tertiary)" aria-live="polite">
-          {nameStatus === "saving" ? "Saving" : nameStatus === "saved" ? "Saved" : ""}
+        <span
+          className="text-[0.6875rem] text-(--ui-text-tertiary)"
+          aria-live="polite"
+        >
+          {nameStatus === "saving"
+            ? "Saving"
+            : nameStatus === "saved"
+              ? "Saved"
+              : ""}
         </span>
         <div className="ml-auto">
-          <WorkspaceActions
+          <WorkflowActions
             disabled={!workflowId || loading}
             onDelete={() => setDeleteOpen(true)}
           />
         </div>
-        <DeleteWorkspaceDialog
+        <DeleteWorkflowDialog
           open={deleteOpen}
           onClose={() => setDeleteOpen(false)}
           onConfirm={async () => {

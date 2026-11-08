@@ -39,7 +39,7 @@ export function WorkflowLibraryPage({ ctx }: WorkflowLibraryPageProps) {
   }, [refreshWorkflows]);
 
   function openWorkflow(id: string) {
-    host.navigate(`/workflow-editor?id=${encodeURIComponent(id)}`);
+    host.navigate(`/workflow-studio?workflowId=${encodeURIComponent(id)}`);
   }
 
   const loader = pending ? (
