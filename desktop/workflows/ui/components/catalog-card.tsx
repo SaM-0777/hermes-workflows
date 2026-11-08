@@ -1,10 +1,10 @@
 import { formatRelativeTime } from "../../lib/format-relative-time";
 import { CARD_ACCENTS } from "../../lib/catalog";
 import { RowButton } from "./row-button";
-import type { WorkflowSummary } from "../../lib/workflow-validation";
+import type { WorkflowDocument } from "../../lib/workflow-validation";
 
 export interface CatalogCardProps {
-  entry: WorkflowSummary;
+  entry: WorkflowDocument;
   onOpen: (id: string) => void;
   accentIndex: number;
 }

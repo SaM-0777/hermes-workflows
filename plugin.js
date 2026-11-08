@@ -7,7 +7,7 @@ import { jsx as jsx12 } from "react/jsx-runtime";
 
 // desktop/workflows/ui/workflow-library.tsx
 import { Button as Button4, host } from "@hermes/plugin-sdk";
-import { useCallback, useEffect as useEffect2, useState } from "react";
+import { useCallback, useEffect as useEffect2, useState as useState2 } from "react";
 
 // desktop/workflows/ui/components/panel-empty.tsx
 import { Codicon } from "@hermes/plugin-sdk";
@@ -178,7 +178,7 @@ function TextTab({ active, label, meta, onClick }) {
 }
 
 // desktop/workflows/ui/components/workflow-browser.tsx
-import { memo } from "react";
+import { memo, useMemo, useState } from "react";
 
 // desktop/workflows/ui/components/category-filter.tsx
 import { Button as Button2, Codicon as Codicon2 } from "@hermes/plugin-sdk";
@@ -405,6 +405,13 @@ var WorkflowBrowser = memo(function WorkflowBrowser2({
   workflows,
   onOpen
 }) {
+  const [query, setQuery] = useState("");
+  const filteredWorkflows = useMemo(() => {
+    const normalizedQuery = query.trim().toLocaleLowerCase();
+    if (!normalizedQuery)
+      return workflows;
+    return workflows.filter((workflow) => workflow.name.toLocaleLowerCase().includes(normalizedQuery));
+  }, [query, workflows]);
   return /* @__PURE__ */ jsxs7("div", {
     className: "@container/catalog flex h-full min-h-0 min-w-0",
     children: [
@@ -424,11 +431,9 @@ var WorkflowBrowser = memo(function WorkflowBrowser2({
             /* @__PURE__ */ jsx9(SearchHeader, {
               loading: false,
               scope: "saved",
-              value: "",
+              value: query,
               placeholder: 'Try "workflow-"',
-              onChange: () => {
-                return;
-              },
+              onChange: setQuery,
               onKeyDown: () => {
                 return;
               }
@@ -448,11 +453,15 @@ var WorkflowBrowser = memo(function WorkflowBrowser2({
                     className: "catalog-filtered-results pt-(--capabilities-gap-lead) pb-2",
                     children: /* @__PURE__ */ jsx9("div", {
                       className: "grid grid-cols-[repeat(auto-fill,minmax(min(100%,17rem),1fr))] auto-rows-[minmax(16rem,auto)] gap-3",
-                      children: workflows.map((workflow, index) => /* @__PURE__ */ jsx9(CatalogCard, {
+                      children: filteredWorkflows.length > 0 ? filteredWorkflows.map((workflow, index) => /* @__PURE__ */ jsx9(CatalogCard, {
                         onOpen,
                         entry: workflow,
                         accentIndex: index
-                      }, workflow.id))
+                      }, workflow.id)) : /* @__PURE__ */ jsx9(PanelEmpty, {
+                        icon: "search",
+                        title: "No workflows found",
+                        description: query.trim() ? `No workflows match “${query.trim()}”.` : "Create a workflow to see it here."
+                      })
                     })
                   })
                 })
@@ -519,7 +528,7 @@ async function readWorkflows(files) {
 async function createWorkflow(files, name) {
   const id = crypto.randomUUID();
   const now = new Date().toISOString();
-  const defaultName = `workspace-${id}`;
+  const defaultName = `workflow-${id}`;
   const workflow = {
     id,
     name: name?.trim() ? name.trim() : defaultName,
@@ -597,9 +606,9 @@ async function deleteWorkflow(files, id) {
 // desktop/workflows/ui/workflow-library.tsx
 import { jsx as jsx10, jsxs as jsxs8 } from "react/jsx-runtime";
 function WorkflowLibraryPage({ ctx }) {
-  const [workflows, setWorkflows] = useState([]);
-  const [pending, setPending] = useState(true);
-  const [error, setError] = useState("");
+  const [workflows, setWorkflows] = useState2([]);
+  const [pending, setPending] = useState2(true);
+  const [error, setError] = useState2("");
   const refreshWorkflows = useCallback(async () => {
     setPending(true);
     setError("");
@@ -673,7 +682,7 @@ import {
   useCallback as useCallback2,
   useEffect as useEffect3,
   useRef as useRef2,
-  useState as useState2
+  useState as useState3
 } from "react";
 
 // desktop/workflows/lib/workflow-protocol.ts
@@ -739,8 +748,8 @@ async function handleWorkflowRequest(files, message) {
 // desktop/workflows/ui/workflow-studio.tsx
 import { jsx as jsx11, jsxs as jsxs9 } from "react/jsx-runtime";
 var STUDIO_URL = "http://localhost:5173";
-function WorkspaceActions({ onDelete, disabled }) {
-  const [open, setOpen] = useState2(false);
+function WorkflowActions({ onDelete, disabled }) {
+  const [open, setOpen] = useState3(false);
   const menuRef = useRef2(null);
   useEffect3(() => {
     if (!open)
@@ -791,12 +800,12 @@ function WorkspaceActions({ onDelete, disabled }) {
     ]
   });
 }
-function DeleteWorkspaceDialog({
+function DeleteWorkflowDialog({
   open,
   onClose,
   onConfirm
 }) {
-  const [busy, setBusy] = useState2(false);
+  const [busy, setBusy] = useState3(false);
   if (!open)
     return null;
   return /* @__PURE__ */ jsx11("div", {
@@ -811,11 +820,11 @@ function DeleteWorkspaceDialog({
           children: [
             /* @__PURE__ */ jsx11("h2", {
               className: "text-sm font-semibold",
-              children: "Delete workspace?"
+              children: "Delete workflow?"
             }),
             /* @__PURE__ */ jsx11("p", {
               className: "text-xs leading-relaxed text-(--ui-text-secondary)",
-              children: "This workspace will be moved to trash."
+              children: "This workflow will be moved to trash."
             })
           ]
         }),
@@ -837,7 +846,7 @@ function DeleteWorkspaceDialog({
                 onConfirm().catch(() => setBusy(false));
               },
               type: "button",
-              children: busy ? "Deleting..." : "Delete workspace"
+              children: busy ? "Deleting..." : "Delete workflow"
             })
           ]
         })
@@ -851,12 +860,12 @@ function WorkflowStudioPage({ ctx }) {
   const hashQuery = window.location.hash.includes("?") ? window.location.hash.slice(window.location.hash.indexOf("?")) : "";
   const workflowId = new URLSearchParams(hashQuery).get("workflowId") ?? new URLSearchParams(window.location.search).get("workflowId");
   const studioUrl = workflowId ? `${STUDIO_URL}/?workflowId=${encodeURIComponent(workflowId)}` : STUDIO_URL;
-  const name = workflowId ? `workspace-${workflowId}` : "Workflow Studio";
-  const [workflow, setWorkflow] = useState2(null);
-  const [nameDraft, setNameDraft] = useState2(name);
-  const [loading, setLoading] = useState2(false);
-  const [nameStatus, setNameStatus] = useState2("saved");
-  const [deleteOpen, setDeleteOpen] = useState2(false);
+  const name = workflowId ? `workflow-${workflowId}` : "Workflow Studio";
+  const [workflow, setWorkflow] = useState3(null);
+  const [nameDraft, setNameDraft] = useState3(name);
+  const [loading, setLoading] = useState3(false);
+  const [nameStatus, setNameStatus] = useState3("saved");
+  const [deleteOpen, setDeleteOpen] = useState3(false);
   useEffect3(() => {
     let active = true;
     if (!workflowId) {
@@ -873,7 +882,7 @@ function WorkflowStudioPage({ ctx }) {
         return;
       workflowRef.current = loaded;
       setWorkflow(loaded);
-      setNameDraft(loaded.name || `workspace-${loaded.id}`);
+      setNameDraft(loaded.name || `workflow-${loaded.id}`);
       setNameStatus("saved");
     }).catch(() => {
       if (!active)
@@ -973,7 +982,7 @@ function WorkflowStudioPage({ ctx }) {
             })
           }),
           /* @__PURE__ */ jsx11("input", {
-            "aria-label": "Workspace name",
+            "aria-label": "Workflow name",
             autoCapitalize: "off",
             autoComplete: "off",
             autoCorrect: "off",
@@ -994,12 +1003,12 @@ function WorkflowStudioPage({ ctx }) {
           }),
           /* @__PURE__ */ jsx11("div", {
             className: "ml-auto",
-            children: /* @__PURE__ */ jsx11(WorkspaceActions, {
+            children: /* @__PURE__ */ jsx11(WorkflowActions, {
               disabled: !workflowId || loading,
               onDelete: () => setDeleteOpen(true)
             })
           }),
-          /* @__PURE__ */ jsx11(DeleteWorkspaceDialog, {
+          /* @__PURE__ */ jsx11(DeleteWorkflowDialog, {
             open: deleteOpen,
             onClose: () => setDeleteOpen(false),
             onConfirm: async () => {
