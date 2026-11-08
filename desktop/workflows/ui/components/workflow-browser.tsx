@@ -15,6 +15,12 @@ export const WorkflowBrowser = memo(function WorkflowBrowser({
 }: WorkflowBrowserProps) {
   return (
     <div className="@container/catalog flex h-full min-h-0 min-w-0">
+      <style>{`
+        @keyframes workflow-catalog-card-spin {
+          from { transform: translate(-50%, -50%) rotate(0deg); }
+          to { transform: translate(-50%, -50%) rotate(360deg); }
+        }
+      `}</style>
       <div className="flex min-h-0 min-w-0 flex-1 flex-col">
         <div className="flex min-h-0 min-w-0 flex-1 flex-col">
           <SearchHeader
@@ -37,7 +43,6 @@ export const WorkflowBrowser = memo(function WorkflowBrowser({
                         onOpen={onOpen}
                         entry={workflow}
                         accentIndex={index}
-                        style={null}
                       />
                     ))}
                   </div>

@@ -72,7 +72,7 @@ export async function handleWorkflowRequest(
     const name =
       typeof payload.name === "string" && payload.name.trim()
         ? payload.name.trim().slice(0, 120)
-        : "Untitled workflow";
+        : undefined;
     return { workflow: await createWorkflow(files, name) };
   }
 

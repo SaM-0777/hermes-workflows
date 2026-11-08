@@ -5,7 +5,6 @@ import {
   type WorkflowDocument,
   type WorkflowEdge,
   type WorkflowNode,
-  type WorkflowSummary,
 } from "./workflow-validation";
 
 export const FILE_PREFIX = "workflow-";
@@ -33,10 +32,7 @@ export interface WorkflowFiles {
     text: string,
     options?: { exclusive?: boolean },
   ) => Promise<WorkflowFilesResult<Record<string, never>>>;
-  trash: (
-    folder: "data",
-    path: string,
-  ) => Promise<WorkflowFilesResult>;
+  trash: (folder: "data", path: string) => Promise<WorkflowFilesResult>;
 }
 
 function resultMessage(
@@ -52,13 +48,13 @@ export function workflowPath(id: string): string {
 
 export async function readWorkflows(
   files: WorkflowFiles,
-): Promise<WorkflowSummary[]> {
+): Promise<WorkflowDocument[]> {
   const listing = await files.list("data");
   if (!listing.ok) {
     throw new Error(resultMessage(listing, "Unable to list workflows"));
   }
 
-  const workflows: WorkflowSummary[] = [];
+  const workflows: WorkflowDocument[] = [];
 
   for (const entry of listing.entries) {
     if (
@@ -78,6 +74,8 @@ export async function readWorkflows(
         workflows.push({
           id: workflow.id,
           name: workflow.name || "Untitled workflow",
+          nodes: workflow.nodes,
+          edges: workflow.edges,
           createdAt: workflow.createdAt,
           updatedAt: workflow.updatedAt,
         });
@@ -96,13 +94,14 @@ export async function readWorkflows(
 
 export async function createWorkflow(
   files: WorkflowFiles,
-  name = "Untitled workflow",
+  name?: string,
 ): Promise<WorkflowDocument> {
   const id = crypto.randomUUID();
   const now = new Date().toISOString();
+  const defaultName = `workspace-${id}`;
   const workflow: WorkflowDocument = {
     id,
-    name: name.trim() ? name.trim().slice(0, 120) : "Untitled workflow",
+    name: name?.trim() ? name.trim() : defaultName,
     createdAt: now,
     updatedAt: now,
     nodes: [],
@@ -156,8 +155,8 @@ export async function saveWorkflow(
     id: input.id,
     name:
       typeof input.name === "string" && input.name.trim()
-        ? input.name.trim().slice(0, 120)
-        : previous.name || "Untitled workflow",
+        ? input.name.trim()
+        : previous.name || `workspace-${input.id}`,
     createdAt: previous.createdAt || now,
     updatedAt: now,
     nodes: input.nodes,

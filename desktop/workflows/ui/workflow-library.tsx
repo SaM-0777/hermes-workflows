@@ -1,11 +1,11 @@
 import { Button, host } from "@hermes/plugin-sdk";
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import { PanelEmpty } from "./components/panel-empty";
 import { PageLoader } from "./components/page-loader";
 import { TextTab } from "./components/text-tab";
 import { WorkflowBrowser } from "./components/workflow-browser";
 import { readWorkflows, type WorkflowFiles } from "../lib/workflow-storage";
-import type { WorkflowSummary } from "../lib/workflow-validation";
+import type { WorkflowDocument } from "../lib/workflow-validation";
 
 interface WorkflowLibraryContext {
   files: WorkflowFiles;
@@ -16,11 +16,11 @@ export interface WorkflowLibraryPageProps {
 }
 
 export function WorkflowLibraryPage({ ctx }: WorkflowLibraryPageProps) {
-  const [workflows, setWorkflows] = useState<WorkflowSummary[]>([]);
+  const [workflows, setWorkflows] = useState<WorkflowDocument[]>([]);
   const [pending, setPending] = useState(true);
   const [error, setError] = useState("");
 
-  async function refreshWorkflows() {
+  const refreshWorkflows = useCallback(async () => {
     setPending(true);
     setError("");
 
@@ -31,13 +31,12 @@ export function WorkflowLibraryPage({ ctx }: WorkflowLibraryPageProps) {
     } finally {
       setPending(false);
     }
-  }
+  }, [ctx.files]);
 
-  /* eslint-disable react-hooks/set-state-in-effect, react-hooks/exhaustive-deps */
   useEffect(() => {
-    void refreshWorkflows();
-  }, []);
-  /* eslint-enable react-hooks/set-state-in-effect, react-hooks/exhaustive-deps */
+    // eslint-disable-next-line react-hooks/set-state-in-effect
+    refreshWorkflows();
+  }, [refreshWorkflows]);
 
   function openWorkflow(id: string) {
     host.navigate(`/workflow-editor?id=${encodeURIComponent(id)}`);
@@ -77,8 +76,7 @@ export function WorkflowLibraryPage({ ctx }: WorkflowLibraryPageProps) {
       <div className="min-h-0 flex-1 overflow-hidden bg-(--ui-chat-surface-background)">
         <div className="flex h-full flex-col">
           <div className="flex min-h-0 flex-1 flex-col">
-            {loader}
-            <WorkflowBrowser workflows={workflows} onOpen={openWorkflow} />
+            {loader ?? <WorkflowBrowser workflows={workflows} onOpen={openWorkflow} />}
           </div>
         </div>
       </div>
