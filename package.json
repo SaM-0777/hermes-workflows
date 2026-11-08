@@ -6,7 +6,7 @@
   "scripts": {
     "dev": "vite",
     "build": "tsc -b && vite build",
-    "build:plugin": "bun build-plugin.ts",
+    "build:plugin": "bun scripts/build-plugin.ts",
     "lint": "eslint .",
     "preview": "vite preview"
   },
