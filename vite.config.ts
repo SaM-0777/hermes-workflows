@@ -1,10 +1,15 @@
 import react from "@vitejs/plugin-react";
 import { defineConfig } from "vite";
 import tailwindcss from "@tailwindcss/vite";
+import { viteSingleFile } from "vite-plugin-singlefile";
 
 // https://vite.dev/config/
-export default defineConfig({
-  plugins: [react(), tailwindcss()],
+export default defineConfig(({ command }) => ({
+  plugins: [
+    react(),
+    tailwindcss(),
+    ...(command === "build" ? [viteSingleFile()] : []),
+  ],
   resolve: {
     tsconfigPaths: true,
   },
@@ -14,4 +19,7 @@ export default defineConfig({
     strictPort: true,
     cors: true,
   },
-});
+  build: {
+    assetsInlineLimit: Infinity,
+  },
+}));
