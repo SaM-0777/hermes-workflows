@@ -1,12 +1,4 @@
-import type { ConfigFormValues } from "@/components/node-editor/config";
-import type { GeneralFormValues } from "@/components/node-editor/general";
-import type { IoFormValues } from "@/components/node-editor/io";
-
-export interface NodeDefinition {
-  general: GeneralFormValues;
-  io: IoFormValues;
-  config: ConfigFormValues;
-}
+import type { NodeData } from "./node";
 
 export const pythonTypes: Record<string, string> = {
   Any: "Any",
@@ -81,33 +73,36 @@ export interface PythonMethods {
 }
 
 export function generatePythonCode(
-  definition: NodeDefinition,
+  nodeData: NodeData,
   methods: PythonMethods = {},
 ): string {
-  const { general, io, config } = definition;
+  const { general, io, config } = nodeData;
   const imports = "from typing import Any";
 
-  const inputLines = io.inputs.map(
-    (port) =>
-      `        {"name": ${toPythonString(port.name)}, "type": ${pythonTypes[port.type] ?? "Any"}},`,
-  );
-  const outputLines = io.outputs.map(
-    (port) =>
-      `        {"name": ${toPythonString(port.name)}, "type": ${pythonTypes[port.type] ?? "Any"}},`,
-  );
-  const parameterLines = config.parameters.map(
-    (parameter) =>
-      `        ${toPythonString(parameter.name)}: {\n            "type": ${pythonTypes[parameter.type] ?? "Any"},\n            "default": ${getDefaultValue(parameter.type, parameter.defaultValue)},\n        },`,
-  );
+  const inputLines =
+    io?.inputs.map(
+      (port) =>
+        `        {"name": ${toPythonString(port.name)}, "type": ${pythonTypes[port.type] ?? "Any"}},`,
+    ) || [];
+  const outputLines =
+    io?.outputs.map(
+      (port) =>
+        `        {"name": ${toPythonString(port.name)}, "type": ${pythonTypes[port.type] ?? "Any"}},`,
+    ) || [];
+  const parameterLines =
+    config?.parameters.map(
+      (parameter) =>
+        `        ${toPythonString(parameter.name)}: {\n            "type": ${pythonTypes[parameter.type] ?? "Any"},\n            "default": ${getDefaultValue(parameter.type, parameter.defaultValue)},\n        },`,
+    ) || [];
 
   const runMethod =
     methods.run ??
-    `    def run(self, inputs, parameters, context):
+    `def run(self, inputs, parameters, context):
         pass`;
 
   const buildOutputMethod =
     methods.build_output ??
-    `    def build_output(self, inputs, parameters, context):
+    `def build_output(self, inputs, parameters, context):
         return self.run(inputs, parameters, context)`;
 
   return `${imports}
@@ -116,7 +111,7 @@ export function generatePythonCode(
 class Execution:
     name: str = ${toPythonString(general.name)}
     description: str = ${toPythonString(general.description)}
-    category: str = ${toPythonString(general.category)}
+    category: str = ${toPythonString(general?.category ?? "")}
 
     inputs: list[dict] = [
 ${inputLines.join("\n")}

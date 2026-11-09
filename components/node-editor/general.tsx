@@ -1,6 +1,5 @@
 import { zodResolver } from "@hookform/resolvers/zod";
 import { Controller, useForm } from "react-hook-form";
-import { z } from "zod";
 import {
   Field,
   FieldContent,
@@ -17,24 +16,8 @@ import {
   SelectTrigger,
   SelectValue,
 } from "../ui/select";
-import { categories } from "@/lib/node";
+import { categories, generalSchema, type GeneralFormValues } from "@/lib/node";
 
-const generalSchema = z.object({
-  name: z
-    .string()
-    .trim()
-    .min(1, "Name is required.")
-    .max(64, "Name must be 64 characters or fewer.")
-    .regex(
-      /^[a-zA-Z][a-zA-Z0-9_-]*$/,
-      "Use letters, numbers, underscores, or hyphens. Start with a letter.",
-    ),
-  description: z
-    .string()
-    .max(500, "Description must be 500 characters or fewer."),
-  category: z.string().min(1, "Please select a category."),
-});
-export type GeneralFormValues = z.infer<typeof generalSchema>;
 interface GeneralTabProps {
   values: GeneralFormValues;
   onChange: (values: GeneralFormValues) => void;
@@ -137,7 +120,13 @@ export function GeneralTab({ values, onChange, onSubmit }: GeneralTabProps) {
                 >
                   <SelectValue placeholder="Select a category" />
                 </SelectTrigger>
-                <SelectContent className="rounded-sm">
+                <SelectContent
+                  side="bottom"
+                  align="start"
+                  alignItemWithTrigger={false}
+                  sideOffset={4}
+                  className="rounded-sm"
+                >
                   {categories.map((category) => (
                     <SelectItem
                       className="rounded-sm"

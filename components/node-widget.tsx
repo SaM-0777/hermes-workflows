@@ -5,21 +5,17 @@ import { useState } from "react";
 import {
   Blocks,
   ChevronRight,
-  Copy,
   Grip,
   Maximize2,
   Minimize2,
   Minus,
   MoreHorizontal,
-  Pencil,
   Pin,
   PinOff,
   Plus,
   Search,
   SearchX,
-  Trash2,
   X,
-  type LucideIcon,
 } from "lucide-react";
 import { Badge } from "./ui/badge";
 import { Tooltip, TooltipContent, TooltipTrigger } from "./ui/tooltip";
@@ -29,11 +25,10 @@ import { Tabs, TabsList, TabsTrigger } from "./ui/tabs";
 import {
   DropdownMenu,
   DropdownMenuContent,
-  DropdownMenuItem,
-  DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from "./ui/dropdown-menu";
 import { NodeEditor } from "./node-editor";
+import type { NodeData } from "@/lib/node";
 
 export type WidgetMode = "expanded" | "compact" | "minimized";
 
@@ -50,23 +45,11 @@ export type WidgetSize = {
 export type NodeWidgetTab = "my-nodes" | "built-in";
 
 export interface NodeWidgetProps {
-  //onClose: () => void;
   onCreateNode: () => void;
-  onAddNode: (node: NodeItem) => void;
-  onEditNode: (node: NodeItem) => void;
-  onDuplicateNode: (node: NodeItem) => void;
-  onDeleteNode: (node: NodeItem) => void;
-  //onPositionChange: (position: WidgetPosition) => void;
+  onAddNode: (data: NodeData) => void;
 }
 
-export default function NodeWidget({
-  //onClose,
-  onCreateNode,
-  onAddNode,
-  onEditNode,
-  onDuplicateNode,
-  onDeleteNode,
-}: NodeWidgetProps) {
+export function NodeWidget({ onCreateNode, onAddNode }: NodeWidgetProps) {
   const [mode, setMode] = useState<WidgetMode>("expanded");
   const [position, setPosition] = useState<WidgetPosition>({ x: 0, y: 0 });
   const [pinned, setPinned] = useState<boolean>(false);
@@ -92,7 +75,6 @@ export default function NodeWidget({
   }, []);
   const changeMode = useCallback((nextMode: WidgetMode) => {
     setMode(nextMode);
-    //onModeChange(nextMode);
   }, []);
 
   function startDragging(event: PointerEvent<HTMLDivElement>) {
@@ -127,10 +109,9 @@ export default function NodeWidget({
   function stopDragging() {
     setDragStart(null);
   }
-
   function handleNodeDragStart(
     event: DragEvent<HTMLDivElement>,
-    node: NodeItem,
+    node: NodeData,
   ) {
     event.dataTransfer.setData(
       "application/workflow-node",
@@ -235,12 +216,12 @@ export default function NodeWidget({
       <CardContent className="flex min-h-0 flex-1 overflow-hidden p-0">
         <div
           className={cn(
-            "flex h-full min-h-0 flex-col overflow-hidden px-3 transition-[width] duration-300 ease-in-out",
+            "flex h-full min-h-0 flex-col overflow-hidden transition-[width] duration-300 ease-in-out space-y-3",
             view === "create" ? "w-87 shrink-0" : "w-full",
           )}
         >
           {mode === "compact" ? (
-            <div className="flex items-center gap-2 p-3">
+            <div className="flex items-center gap-2 px-3">
               <Button size="sm" className="flex-1" onClick={() => {}}>
                 <Plus className="size-3.5" />
                 Create
@@ -258,7 +239,7 @@ export default function NodeWidget({
             </div>
           ) : (
             <>
-              <div className="shrink-0 pt-3">
+              <div className="shrink-0 px-3 pt-3">
                 <div className="relative">
                   <Search className="pointer-events-none absolute left-2.5 top-1/2 size-3.5 -translate-y-1/2 text-muted-foreground" />
                   <Input
@@ -285,7 +266,7 @@ export default function NodeWidget({
               <Tabs
                 value={activeTab}
                 onValueChange={(value) => setActiveTab(value as NodeWidgetTab)}
-                className="shrink-0 pt-3"
+                className="shrink-0 px-3"
               >
                 <TabsList className="grid h-8 w-full grid-cols-2">
                   <TabsTrigger value="my-nodes" className="text-xs">
@@ -297,7 +278,7 @@ export default function NodeWidget({
                 </TabsList>
               </Tabs>
 
-              <div className="shrink-0 pt-3">
+              <div className="shrink-0 px-3">
                 <Button
                   type="button"
                   variant="outline"
@@ -328,7 +309,7 @@ export default function NodeWidget({
                 </Button>
               </div>
 
-              <div className="flex shrink-0 items-center justify-between pb-2 pt-4">
+              <div className="flex shrink-0 items-center justify-between px-3">
                 <span className="text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">
                   {activeTab === "my-nodes"
                     ? "Your components"
@@ -345,7 +326,7 @@ export default function NodeWidget({
                 </Badge>
               </div>
 
-              <div className="min-h-0 flex-1 space-y-2 overflow-y-auto overscroll-contain px-3 pb-3">
+              <div className="min-h-0 flex-1 space-y-2 overflow-y-auto overscroll-contain px-3">
                 {filteredNodes.length > 0 ? (
                   filteredNodes.map((node, index) => (
                     <NodeListRow
@@ -353,9 +334,6 @@ export default function NodeWidget({
                       node={node}
                       handleNodeDragStart={handleNodeDragStart}
                       onAddNode={onAddNode}
-                      onEditNode={onEditNode}
-                      onDeleteNode={onDeleteNode}
-                      onDuplicateNode={onDuplicateNode}
                     />
                   ))
                 ) : (
@@ -371,6 +349,26 @@ export default function NodeWidget({
                     </p>
                   </div>
                 )}
+              </div>
+
+              <div className="shrink-0">
+                <Button
+                  type="button"
+                  variant="outline"
+                  className="w-full h-10 justify-start gap-2 rounded-none"
+                  onClick={() => {
+                    onAddNode({
+                      id: crypto.randomUUID(),
+                      general: {
+                        name: "custom_node",
+                        description: "",
+                      },
+                    });
+                  }}
+                >
+                  <Plus className="size-4" />
+                  New component
+                </Button>
               </div>
             </>
           )}
@@ -405,41 +403,27 @@ export default function NodeWidget({
   );
 }
 
-export interface NodeItem {
-  id: string;
-  name: string;
-  displayName: string;
-  description: string;
-  icon: LucideIcon;
-  parameters: Record<string, unknown>;
-  category?: string;
-  inputs: number;
-  outputs: number;
-  source: "custom" | "builtin";
-  updatedAt?: number;
-}
-
 export interface NodeListRowProps {
-  node: NodeItem;
+  node: NodeData;
   handleNodeDragStart: (
     event: DragEvent<HTMLDivElement>,
-    node: NodeItem,
+    node: NodeData,
   ) => void;
-  onAddNode: (node: NodeItem) => void;
-  onEditNode: (node: NodeItem) => void;
-  onDuplicateNode: (node: NodeItem) => void;
-  onDeleteNode: (node: NodeItem) => void;
+  onAddNode: (node: NodeData) => void;
+  //onEditNode: (node: NodeItem) => void;
+  //onDuplicateNode: (node: NodeItem) => void;
+  //onDeleteNode: (node: NodeItem) => void;
 }
 
 function NodeListRow({
   node,
   handleNodeDragStart,
   onAddNode,
-  onEditNode,
-  onDuplicateNode,
-  onDeleteNode,
+  //onEditNode,
+  //onDuplicateNode,
+  //onDeleteNode,
 }: NodeListRowProps) {
-  const Icon = node.icon;
+  //const Icon = node.icon;
 
   return (
     <Card
@@ -456,15 +440,14 @@ function NodeListRow({
     >
       <CardContent className="p-3">
         <div className="flex min-w-0 items-center gap-2.5">
-          <div className="flex size-9 shrink-0 items-center justify-center rounded-md border border-border bg-muted/70">
+          {/*<div className="flex size-9 shrink-0 items-center justify-center rounded-md border border-border bg-muted/70">
             <Icon className="size-4 text-muted-foreground" />
-          </div>
+          </div>*/}
 
           <div className="min-w-0 flex-1">
-            <p className="truncate text-sm font-medium">{node.displayName}</p>
-
+            <p className="truncate text-sm font-medium">{node.general.name}</p>
             <p className="truncate text-xs text-muted-foreground">
-              {node.description}
+              {node.general.description}
             </p>
           </div>
 
@@ -503,7 +486,7 @@ function NodeListRow({
               </Button>
             </DropdownMenuTrigger>
             <DropdownMenuContent align="end" className="w-40">
-              <DropdownMenuItem onClick={() => onEditNode(node)}>
+              {/*<DropdownMenuItem onClick={() => onEditNode(node)}>
                 <Pencil />
                 Edit component
               </DropdownMenuItem>
@@ -518,12 +501,12 @@ function NodeListRow({
               >
                 <Trash2 />
                 Delete
-              </DropdownMenuItem>
+              </DropdownMenuItem>*/}
             </DropdownMenuContent>
           </DropdownMenu>
         </div>
 
-        <div className="mt-3 flex items-center justify-between">
+        {/*<div className="mt-3 flex items-center justify-between">
           <Badge
             variant="secondary"
             className="h-5 px-1.5 text-[10px] font-normal"
@@ -534,7 +517,7 @@ function NodeListRow({
           <span className="text-[11px] text-muted-foreground">
             {node.inputs} inputs {node.outputs} outputs
           </span>
-        </div>
+        </div>*/}
       </CardContent>
     </Card>
   );

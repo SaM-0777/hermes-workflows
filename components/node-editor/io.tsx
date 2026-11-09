@@ -1,4 +1,3 @@
-import { z } from "zod";
 import { Button } from "../ui/button";
 import { Controller, useFieldArray, useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
@@ -12,47 +11,10 @@ import {
   SelectTrigger,
   SelectValue,
 } from "../ui/select";
-import { dataTypes } from "@/lib/node";
+import { dataTypes, ioSchema, type IoFormValues } from "@/lib/node";
 
-const portSchema = z.object({
-  name: z
-    .string()
-    .trim()
-    .min(1, "Port name is required.")
-    .max(64, "Name must be 64 characters or fewer.")
-    .regex(
-      /^[a-zA-Z][a-zA-Z0-9_-]*$/,
-      "Use letters, numbers, underscores, or hyphens.",
-    ),
-  type: z.enum(dataTypes),
-});
-const ioSchema = z
-  .object({
-    inputs: z.array(portSchema),
-    outputs: z.array(portSchema),
-  })
-  .superRefine((values, ctx) => {
-    for (const direction of ["inputs", "outputs"] as const) {
-      const names = new Set<string>();
-
-      values[direction].forEach((port, index) => {
-        const normalizedName = port.name.trim().toLowerCase();
-
-        if (normalizedName && names.has(normalizedName)) {
-          ctx.addIssue({
-            code: "custom",
-            message: "Port names must be unique.",
-            path: [direction, index, "name"],
-          });
-        }
-
-        names.add(normalizedName);
-      });
-    }
-  });
-export type IoFormValues = z.infer<typeof ioSchema>;
 interface IoTabProps {
-  values: IoFormValues;
+  values?: IoFormValues;
   onChange: (values: IoFormValues) => void;
   onSubmit?: (values: IoFormValues) => void;
 }
@@ -176,7 +138,13 @@ export function IoTab({ values, onChange, onSubmit }: IoTabProps) {
                           <SelectTrigger>
                             <SelectValue placeholder="Select type" />
                           </SelectTrigger>
-                          <SelectContent className="rounded-sm">
+                          <SelectContent
+                            side="bottom"
+                            align="start"
+                            alignItemWithTrigger={false}
+                            sideOffset={4}
+                            className="rounded-sm"
+                          >
                             {dataTypes.map((type) => (
                               <SelectItem
                                 className="rounded-sm"

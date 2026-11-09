@@ -1,5 +1,6 @@
 import { ReactFlowProvider } from "@xyflow/react";
 import FlowCanvas from "@/components/flow-canvas";
+import "@xyflow/react/dist/style.css";
 
 export default function App() {
   return (

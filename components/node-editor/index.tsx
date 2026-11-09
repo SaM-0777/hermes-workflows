@@ -1,11 +1,12 @@
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { cn } from "@/lib/utils";
-import { GeneralTab, type GeneralFormValues } from "./general";
-import { IoTab, type IoFormValues } from "./io";
-import { ConfigTab, type ConfigFormValues } from "./config";
+import { GeneralTab } from "./general";
+import { IoTab } from "./io";
+import { ConfigTab } from "./config";
 import { ExecutionTab } from "./execution";
 import { useState } from "react";
 import { generatePythonCode, type PythonMethods } from "@/lib/python-code";
+import type { NodeData } from "@/lib/node";
 
 export type NodeEditorTab = "general" | "io" | "config" | "execution";
 
@@ -16,41 +17,39 @@ const tabs: { value: NodeEditorTab; label: string }[] = [
   { value: "execution", label: "Execution" },
 ];
 
-interface NodeDefinition {
-  general: GeneralFormValues;
-  io: IoFormValues;
-  config: ConfigFormValues;
+export interface NodeEditorProps {
+  data?: NodeData;
 }
 
-const initialDefinition: NodeDefinition = {
-  general: {
-    name: "",
-    description: "",
-    category: "",
-  },
-  io: {
-    inputs: [],
-    outputs: [],
-  },
-  config: {
-    parameters: [],
-  },
-};
-export function NodeEditor() {
+export function NodeEditor({ data }: NodeEditorProps) {
+  const initialDefinition: NodeData = data ?? {
+    id: "",
+    general: {
+      name: "",
+      description: "",
+      category: "",
+    },
+    io: {
+      inputs: [],
+      outputs: [],
+    },
+    config: {
+      parameters: [],
+    },
+  };
   const [pythonMethods, setPythonMethods] = useState<PythonMethods>({});
   const [definitionVersion, setDefinitionVersion] = useState(0);
-  const [definition, setDefinition] =
-    useState<NodeDefinition>(initialDefinition);
+  const [definition, setDefinition] = useState<NodeData>(initialDefinition);
   const [pythonCode, setPythonCode] = useState(() =>
     generatePythonCode(initialDefinition),
   );
 
-  function updateDefinition(nextDefinition: NodeDefinition) {
+  function updateDefinition(nextDefinition: NodeData) {
     setDefinition(nextDefinition);
     setPythonCode(generatePythonCode(nextDefinition, pythonMethods));
   }
 
-  function handleDefinitionExtracted(nextDefinition: NodeDefinition) {
+  function handleDefinitionExtracted(nextDefinition: NodeData) {
     setDefinition(nextDefinition);
     setDefinitionVersion((version) => version + 1);
   }
@@ -86,7 +85,7 @@ export function NodeEditor() {
             ))}
           </TabsList>
 
-          <TabsContent value="general" className="m-0 h-full p-5 sm:p-6">
+          <TabsContent value="general" className="m-0 h-full p-5">
             <GeneralTab
               key={definitionVersion}
               values={definition.general}
@@ -96,7 +95,7 @@ export function NodeEditor() {
             />
           </TabsContent>
 
-          <TabsContent value="io" className="m-0 h-full p-5 sm:p-6">
+          <TabsContent value="io" className="m-0 h-full p-5">
             <IoTab
               key={definitionVersion}
               values={definition.io}
@@ -104,7 +103,7 @@ export function NodeEditor() {
             />
           </TabsContent>
 
-          <TabsContent value="config" className="m-0 h-full p-5 sm:p-6">
+          <TabsContent value="config" className="m-0 h-full p-5">
             <ConfigTab
               key={definitionVersion}
               values={definition.config}
