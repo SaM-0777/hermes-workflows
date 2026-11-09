@@ -111,7 +111,6 @@ export const ioSchema = z
 export type IoFormValues = z.infer<typeof ioSchema>;
 
 export type NodeData = {
-  id: string;
   general: GeneralFormValues;
   io?: IoFormValues;
   config?: ConfigFormValues;

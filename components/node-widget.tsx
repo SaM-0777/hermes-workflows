@@ -115,9 +115,7 @@ export function NodeWidget({ onCreateNode, onAddNode }: NodeWidgetProps) {
   ) {
     event.dataTransfer.setData(
       "application/workflow-node",
-      JSON.stringify({
-        nodeId: node.id,
-      }),
+      JSON.stringify(node),
     );
 
     event.dataTransfer.effectAllowed = "copy";
@@ -358,7 +356,6 @@ export function NodeWidget({ onCreateNode, onAddNode }: NodeWidgetProps) {
                   className="w-full h-10 justify-start gap-2 rounded-none"
                   onClick={() => {
                     onAddNode({
-                      id: crypto.randomUUID(),
                       general: {
                         name: "custom_node",
                         description: "",
@@ -427,7 +424,6 @@ function NodeListRow({
 
   return (
     <Card
-      key={node.id}
       draggable
       onDragStart={(event) => handleNodeDragStart(event, node)}
       onClick={() => onAddNode(node)}

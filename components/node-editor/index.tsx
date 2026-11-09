@@ -7,6 +7,8 @@ import { ExecutionTab } from "./execution";
 import { useState } from "react";
 import { generatePythonCode, type PythonMethods } from "@/lib/python-code";
 import type { NodeData } from "@/lib/node";
+import { Button } from "../ui/button";
+import { X } from "lucide-react";
 
 export type NodeEditorTab = "general" | "io" | "config" | "execution";
 
@@ -19,11 +21,18 @@ const tabs: { value: NodeEditorTab; label: string }[] = [
 
 export interface NodeEditorProps {
   data?: NodeData;
+  onSave?: (data: NodeData) => void;
+  onCancel?: () => void;
+  closeButton?: boolean;
 }
 
-export function NodeEditor({ data }: NodeEditorProps) {
+export function NodeEditor({
+  data,
+  onSave,
+  onCancel,
+  closeButton,
+}: NodeEditorProps) {
   const initialDefinition: NodeData = data ?? {
-    id: "",
     general: {
       name: "",
       description: "",
@@ -40,9 +49,18 @@ export function NodeEditor({ data }: NodeEditorProps) {
   const [pythonMethods, setPythonMethods] = useState<PythonMethods>({});
   const [definitionVersion, setDefinitionVersion] = useState(0);
   const [definition, setDefinition] = useState<NodeData>(initialDefinition);
-  const [pythonCode, setPythonCode] = useState(() =>
-    generatePythonCode(initialDefinition),
+  const [pythonCode, setPythonCode] = useState(
+    () => data?.execution?.pythonCode || generatePythonCode(initialDefinition),
   );
+
+  function handleSave() {
+    onSave?.({
+      ...definition,
+      execution: {
+        pythonCode,
+      },
+    });
+  }
 
   function updateDefinition(nextDefinition: NodeData) {
     setDefinition(nextDefinition);
@@ -57,6 +75,14 @@ export function NodeEditor({ data }: NodeEditorProps) {
   return (
     <div className={cn("flex h-full min-h-0 min-w-0 flex-col overflow-hidden")}>
       <div className="flex min-h-0 min-w-0 flex-1 flex-col">
+        {closeButton && (
+          <div className="w-full flex items-center justify-end p-2 border border-b">
+            <Button type="button" variant={"ghost"} onClick={onCancel}>
+              <X />
+            </Button>
+          </div>
+        )}
+
         <Tabs
           defaultValue="general"
           className="flex h-full min-h-0 min-w-0 flex-1 flex-col gap-0"
@@ -72,12 +98,9 @@ export function NodeEditor({ data }: NodeEditorProps) {
                 key={tab.value}
                 value={tab.value}
                 className={cn(
-                  "h-12 min-w-20 flex-1 rounded-none px-3",
+                  "min-w-20 flex-1 rounded-none px-3",
                   "text-xs sm:min-w-25 sm:text-sm",
                   "border-b-2 border-transparent",
-                  "data-[state=active]:border-primary",
-                  "data-[state=active]:bg-transparent",
-                  "data-[state=active]:shadow-none",
                 )}
               >
                 {tab.label}
@@ -123,6 +146,25 @@ export function NodeEditor({ data }: NodeEditorProps) {
             />
           </TabsContent>
         </Tabs>
+
+        {(onSave || onCancel) && (
+          <div className="flex shrink-0 justify-end gap-2 border-t px-5 py-3">
+            {onCancel && (
+              <Button
+                variant="outline"
+                onClick={onCancel}
+                className={"rounded-sm"}
+              >
+                Cancel
+              </Button>
+            )}
+            {onSave && (
+              <Button onClick={handleSave} className={"rounded-sm"}>
+                Save changes
+              </Button>
+            )}
+          </div>
+        )}
       </div>
     </div>
   );

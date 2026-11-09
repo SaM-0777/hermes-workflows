@@ -30,7 +30,7 @@ interface ConfigTabProps {
 export function ConfigTab({ values, onChange, onSubmit }: ConfigTabProps) {
   const form = useForm<ConfigFormValues>({
     resolver: zodResolver(configSchema),
-    values,
+    defaultValues: values ?? { parameters: [] },
     mode: "onChange",
   });
   const { fields, append, remove } = useFieldArray({
@@ -45,69 +45,63 @@ export function ConfigTab({ values, onChange, onSubmit }: ConfigTabProps) {
     onSubmit?.(values);
   }
 
-  function renderParameters() {
-    return (
-      <section className="space-y-3">
-        <div className="flex items-center justify-between">
-          <div>
-            <h3 className="text-sm font-medium">Parameters</h3>
-            <p className="text-xs text-muted-foreground">
-              Define configurable values for this component.
-            </p>
-          </div>
-
-          <Button
-            type="button"
-            variant="outline"
-            size="sm"
-            onClick={() => {
-              append({
-                name: "",
-                type: "String",
-                defaultValue: "",
-              });
-              notifyChange();
-            }}
-          >
-            <Plus className="mr-1 size-3.5" />
-            Add parameter
-          </Button>
-        </div>
-
-        {fields.length === 0 ? (
-          <div className="rounded-lg border border-dashed px-4 py-6 text-center">
-            <p className="text-sm text-muted-foreground">
-              No parameters defined yet.
-            </p>
-          </div>
-        ) : (
-          <div className="space-y-2">
-            {fields.map((field, index) => (
-              <ParameterRow
-                key={field.id}
-                control={form.control}
-                index={index}
-                setValue={form.setValue}
-                onChange={notifyChange}
-                onRemove={() => {
-                  remove(index);
-                  notifyChange();
-                }}
-              />
-            ))}
-          </div>
-        )}
-      </section>
-    );
-  }
-
   return (
     <form
       className="flex h-full min-h-0 flex-col"
       onSubmit={form.handleSubmit(handleSubmit)}
     >
       <div className="min-h-0 flex-1 space-y-3 overflow-y-auto p-4">
-        {renderParameters()}
+        <section className="space-y-3">
+          <div className="flex items-center justify-between">
+            <div>
+              <h3 className="text-sm font-medium">Parameters</h3>
+              <p className="text-xs text-muted-foreground">
+                Define configurable values for this component.
+              </p>
+            </div>
+
+            <Button
+              type="button"
+              variant="outline"
+              size="sm"
+              onClick={() => {
+                append({
+                  name: "",
+                  type: "String",
+                  defaultValue: "",
+                });
+                notifyChange();
+              }}
+            >
+              <Plus className="mr-1 size-3.5" />
+              Add parameter
+            </Button>
+          </div>
+
+          {fields.length === 0 ? (
+            <div className="rounded-lg border border-dashed px-4 py-6 text-center">
+              <p className="text-sm text-muted-foreground">
+                No parameters defined yet.
+              </p>
+            </div>
+          ) : (
+            <div className="space-y-2">
+              {fields.map((field, index) => (
+                <ParameterRow
+                  key={field.id}
+                  control={form.control}
+                  index={index}
+                  setValue={form.setValue}
+                  onChange={notifyChange}
+                  onRemove={() => {
+                    remove(index);
+                    notifyChange();
+                  }}
+                />
+              ))}
+            </div>
+          )}
+        </section>
       </div>
     </form>
   );

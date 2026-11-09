@@ -7,12 +7,13 @@ import {
   extractPythonMethods,
   type PythonDiagnostic,
 } from "@/lib/python-validator";
-import type { NodeDefinition, PythonMethods } from "@/lib/python-code";
+import type { PythonMethods } from "@/lib/python-code";
+import type { NodeData } from "@/lib/node";
 
 interface ExecutionTabProps {
   value: string;
   onChange: (value: string) => void;
-  onDefinitionExtracted: (definition: NodeDefinition) => void;
+  onDefinitionExtracted: (definition: NodeData) => void;
   onMethodsExtracted: (methods: PythonMethods) => void;
 }
 
@@ -73,14 +74,18 @@ export function ExecutionTab({
 
   return (
     <div className="flex h-full min-h-0 flex-col overflow-hidden">
-      <div className="flex shrink-0 flex-col items-start gap-0.5 border-b px-4 py-3">
-        <span className="text-sm font-medium text-muted-foreground">
-          Python
-        </span>
+      <div className="flex items-center justify-between">
+        <div className="flex shrink-0 flex-col items-start gap-0.5 border-b px-4 py-3">
+          <span className="text-sm font-medium text-muted-foreground">
+            Python
+          </span>
 
-        <span className="text-sm text-muted-foreground">
-          Edit component code
-        </span>
+          <span className="text-sm text-muted-foreground">
+            Edit component code
+          </span>
+        </div>
+
+
       </div>
 
       <div className="min-h-0 flex-1">
@@ -139,10 +144,12 @@ export function ExecutionTab({
         <Button
           type="button"
           size="sm"
+          variant={"outline"}
           onClick={handleValidate}
           disabled={isValidating}
+          className={"rounded-sm"}
         >
-          {isValidating ? "Validating..." : "Validate & Save"}
+          {isValidating ? "Validating..." : "Validate Code"}
         </Button>
       </div>
     </div>
