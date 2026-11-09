@@ -1,5 +1,5 @@
 import { loadPyodide, version, type PyodideInterface } from "pyodide";
-import type { NodeDefinition } from "@/lib/python-code";
+import type { NodeDefinition, PythonMethods } from "@/lib/python-code";
 import { dataTypes } from "@/lib/node";
 
 export interface PythonDiagnostic {
@@ -246,3 +246,54 @@ json.dumps(metadata)
     pyodide.globals.delete("workflow_source");
   }
 }
+
+
+export async function extractPythonMethods(
+  source: string,
+): Promise<PythonMethods> {
+  const pyodide = await getPyodide();
+
+  pyodide.globals.set("workflow_source", source);
+
+  try {
+    const result = await pyodide.runPythonAsync(`
+import ast
+import json
+
+tree = ast.parse(workflow_source)
+lines = workflow_source.splitlines()
+
+execution_class = next(
+    (
+        node for node in tree.body
+        if isinstance(node, ast.ClassDef) and node.name == "Execution"
+    ),
+    None
+)
+
+if execution_class is None:
+    raise ValueError("Could not find class Execution.")
+
+methods = {}
+
+for node in execution_class.body:
+    if not isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef)):
+        continue
+    if node.name not in ("run", "build_output"):
+        continue
+    start_line = min(
+        [node.lineno] + [decorator.lineno for decorator in node.decorator_list]
+    )
+    end_line = node.end_lineno
+    methods[node.name] = "\\n".join(lines[start_line - 1:end_line])
+
+json.dumps(methods)
+`);
+
+    return JSON.parse(result as string) as PythonMethods;
+  } finally {
+    pyodide.globals.delete("workflow_source");
+  }
+}
+
+

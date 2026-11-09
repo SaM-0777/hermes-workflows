@@ -4,20 +4,23 @@ import { Button } from "../ui/button";
 import {
   validatePython,
   extractPythonDefinition,
+  extractPythonMethods,
   type PythonDiagnostic,
 } from "@/lib/python-validator";
-import type { NodeDefinition } from "@/lib/python-code";
+import type { NodeDefinition, PythonMethods } from "@/lib/python-code";
 
 interface ExecutionTabProps {
   value: string;
   onChange: (value: string) => void;
   onDefinitionExtracted: (definition: NodeDefinition) => void;
+  onMethodsExtracted: (methods: PythonMethods) => void;
 }
 
 export function ExecutionTab({
   value,
   onChange,
   onDefinitionExtracted,
+  onMethodsExtracted,
 }: ExecutionTabProps) {
   const [isValidating, setIsValidating] = useState(false);
   const [diagnostics, setDiagnostics] = useState<PythonDiagnostic[]>([]);
@@ -38,8 +41,10 @@ export function ExecutionTab({
       }
 
       const definition = await extractPythonDefinition(value);
+      const methods = await extractPythonMethods(value);
 
       onDefinitionExtracted(definition);
+      onMethodsExtracted(methods);
 
       setIsValid(true);
       setDiagnostics([]);

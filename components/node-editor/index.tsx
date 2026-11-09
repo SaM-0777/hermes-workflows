@@ -5,7 +5,7 @@ import { IoTab, type IoFormValues } from "./io";
 import { ConfigTab, type ConfigFormValues } from "./config";
 import { ExecutionTab } from "./execution";
 import { useState } from "react";
-import { generatePythonCode } from "@/lib/python-code";
+import { generatePythonCode, type PythonMethods } from "@/lib/python-code";
 
 export type NodeEditorTab = "general" | "io" | "config" | "execution";
 
@@ -37,6 +37,7 @@ const initialDefinition: NodeDefinition = {
   },
 };
 export function NodeEditor() {
+  const [pythonMethods, setPythonMethods] = useState<PythonMethods>({});
   const [definitionVersion, setDefinitionVersion] = useState(0);
   const [definition, setDefinition] =
     useState<NodeDefinition>(initialDefinition);
@@ -46,7 +47,7 @@ export function NodeEditor() {
 
   function updateDefinition(nextDefinition: NodeDefinition) {
     setDefinition(nextDefinition);
-    setPythonCode(generatePythonCode(nextDefinition));
+    setPythonCode(generatePythonCode(nextDefinition, pythonMethods));
   }
 
   function handleDefinitionExtracted(nextDefinition: NodeDefinition) {
@@ -119,6 +120,7 @@ export function NodeEditor() {
               value={pythonCode}
               onChange={setPythonCode}
               onDefinitionExtracted={handleDefinitionExtracted}
+              onMethodsExtracted={setPythonMethods}
             />
           </TabsContent>
         </Tabs>

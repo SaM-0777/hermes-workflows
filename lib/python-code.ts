@@ -75,7 +75,15 @@ function getDefaultValue(type: string, value: string): string {
   }
 }
 
-export function generatePythonCode(definition: NodeDefinition): string {
+export interface PythonMethods {
+  run?: string;
+  build_output?: string;
+}
+
+export function generatePythonCode(
+  definition: NodeDefinition,
+  methods: PythonMethods = {},
+): string {
   const { general, io, config } = definition;
   const imports = "from typing import Any";
 
@@ -91,6 +99,16 @@ export function generatePythonCode(definition: NodeDefinition): string {
     (parameter) =>
       `        ${toPythonString(parameter.name)}: {\n            "type": ${pythonTypes[parameter.type] ?? "Any"},\n            "default": ${getDefaultValue(parameter.type, parameter.defaultValue)},\n        },`,
   );
+
+  const runMethod =
+    methods.run ??
+    `    def run(self, inputs, parameters, context):
+        pass`;
+
+  const buildOutputMethod =
+    methods.build_output ??
+    `    def build_output(self, inputs, parameters, context):
+        return self.run(inputs, parameters, context)`;
 
   return `${imports}
 
@@ -112,10 +130,8 @@ ${outputLines.join("\n")}
 ${parameterLines.join("\n")}
     }
 
-    def run(self, inputs, parameters, context):
-        pass
+    ${runMethod}
 
-    def build_output(self, inputs, parameters, context):
-        return self.run(inputs, parameters, context)
+    ${buildOutputMethod}
 `;
 }
