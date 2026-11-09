@@ -74,6 +74,7 @@ export function NodeWidget({ onCreateNode, onAddNode }: NodeWidgetProps) {
     setPosition(next);
   }, []);
   const changeMode = useCallback((nextMode: WidgetMode) => {
+    if (nextMode === "compact") setView("library");
     setMode(nextMode);
   }, []);
 
@@ -188,12 +189,12 @@ export function NodeWidget({ onCreateNode, onAddNode }: NodeWidgetProps) {
               {mode === "expanded" ? "Compact view" : "Expanded view"}
             </TooltipContent>
           </Tooltip>
-          <Tooltip>
+          {/*<Tooltip>
             <TooltipTrigger onClick={() => changeMode("minimized")}>
               <Minus className="size-3.5" />
             </TooltipTrigger>
             <TooltipContent>Minimize</TooltipContent>
-          </Tooltip>
+          </Tooltip>*/}
           {/*<Tooltip>
             <TooltipTrigger>
               <Button
@@ -219,7 +220,7 @@ export function NodeWidget({ onCreateNode, onAddNode }: NodeWidgetProps) {
           )}
         >
           {mode === "compact" ? (
-            <div className="flex items-center gap-2 px-3">
+            <div className="flex items-center gap-2 p-3">
               <Button size="sm" className="flex-1" onClick={() => {}}>
                 <Plus className="size-3.5" />
                 Create
