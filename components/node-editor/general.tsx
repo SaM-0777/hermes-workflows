@@ -1,8 +1,6 @@
-import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import z from "zod";
-import { Controller, useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
-import { cn } from "@/lib/utils";
+import { Controller, useForm } from "react-hook-form";
+import { z } from "zod";
 import {
   Field,
   FieldContent,
@@ -10,86 +8,16 @@ import {
   FieldError,
   FieldGroup,
   FieldLabel,
-} from "./ui/field";
-import { Input } from "./ui/input";
+} from "../ui/field";
+import { Input } from "../ui/input";
 import {
   Select,
   SelectContent,
   SelectItem,
   SelectTrigger,
   SelectValue,
-} from "./ui/select";
-
-export type NodeEditorTab = "general" | "io" | "config" | "execution";
-
-const tabs: { value: NodeEditorTab; label: string }[] = [
-  { value: "general", label: "General" },
-  { value: "io", label: "IO" },
-  { value: "config", label: "Config" },
-  { value: "execution", label: "execution" },
-];
-
-export function NodeEditor() {
-  return (
-    <div className={cn("flex h-full min-h-0 min-w-0 flex-col overflow-hidden")}>
-      <div>
-        <Tabs
-          defaultValue="general"
-          className="flex min-h-0 min-w-0 flex-1 flex-col gap-0"
-        >
-          <TabsList
-            className={cn(
-              "flex h-12 w-max min-w-full justify-start gap-1",
-              "rounded-none bg-transparent p-0",
-            )}
-          >
-            {tabs.map((tab) => (
-              <TabsTrigger
-                key={tab.value}
-                value={tab.value}
-                className={cn(
-                  "h-12 min-w-20 flex-1 rounded-none px-3",
-                  "text-xs sm:min-w-25 sm:text-sm",
-                  "border-b-2 border-transparent",
-                  "data-[state=active]:border-primary",
-                  "data-[state=active]:bg-transparent",
-                  "data-[state=active]:shadow-none",
-                )}
-              >
-                {tab.label}
-              </TabsTrigger>
-            ))}
-          </TabsList>
-
-          <TabsContent value="general" className="m-0 h-full p-5 sm:p-6">
-            <GeneralTab />
-          </TabsContent>
-
-          <TabsContent value="io" className="m-0 h-full p-5 sm:p-6">
-            <TabPlaceholder
-              title="Inputs"
-              description="Define the data this component receives from connected nodes."
-            />
-          </TabsContent>
-
-          <TabsContent value="config" className="m-0 h-full p-5 sm:p-6">
-            <TabPlaceholder
-              title="Parameters"
-              description="Configure the editable values and defaults for this component."
-            />
-          </TabsContent>
-
-          <TabsContent value="execution" className="m-0 h-full p-5 sm:p-6">
-            <TabPlaceholder
-              title="Python implementation"
-              description="Write the complete Python class implementation for this component."
-            />
-          </TabsContent>
-        </Tabs>
-      </div>
-    </div>
-  );
-}
+} from "../ui/select";
+import { categories } from "@/lib/node";
 
 const generalSchema = z.object({
   name: z
@@ -112,15 +40,11 @@ interface GeneralTabProps {
   onChange?: (values: GeneralFormValues) => void;
   onSubmit?: (values: GeneralFormValues) => void;
 }
-const categories = [
-  { value: "data", label: "Data" },
-  { value: "model", label: "Model" },
-  { value: "processing", label: "Processing" },
-  { value: "control-flow", label: "Control Flow" },
-  { value: "utility", label: "Utility" },
-  { value: "other", label: "Other" },
-];
-function GeneralTab({ defaultValues, onChange, onSubmit }: GeneralTabProps) {
+export function GeneralTab({
+  defaultValues,
+  onChange,
+  onSubmit,
+}: GeneralTabProps) {
   const form = useForm<GeneralFormValues>({
     resolver: zodResolver(generalSchema),
     defaultValues: {
@@ -136,7 +60,7 @@ function GeneralTab({ defaultValues, onChange, onSubmit }: GeneralTabProps) {
   }
 
   return (
-    <form action="" onSubmit={form.handleSubmit(handleSubmit)}>
+    <form onSubmit={form.handleSubmit(handleSubmit)}>
       <FieldGroup>
         <Controller
           name="name"
@@ -227,22 +151,5 @@ function GeneralTab({ defaultValues, onChange, onSubmit }: GeneralTabProps) {
         />
       </FieldGroup>
     </form>
-  );
-}
-
-
-
-function TabPlaceholder({
-  title,
-  description,
-}: {
-  title: string;
-  description: string;
-}) {
-  return (
-    <div className="space-y-2">
-      <h3 className="text-sm font-semibold">{title}</h3>
-      <p className="max-w-xl text-sm text-muted-foreground">{description}</p>
-    </div>
   );
 }
