@@ -1,8 +1,11 @@
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { cn } from "@/lib/utils";
-import { GeneralTab } from "./general";
-import { IoTab } from "./io";
-import { ConfigTab } from "./config";
+import { GeneralTab, type GeneralFormValues } from "./general";
+import { IoTab, type IoFormValues } from "./io";
+import { ConfigTab, type ConfigFormValues } from "./config";
+import { ExecutionTab } from "./execution";
+import { useState } from "react";
+import { generatePythonCode } from "@/lib/python-code";
 
 export type NodeEditorTab = "general" | "io" | "config" | "execution";
 
@@ -10,16 +13,53 @@ const tabs: { value: NodeEditorTab; label: string }[] = [
   { value: "general", label: "General" },
   { value: "io", label: "IO" },
   { value: "config", label: "Config" },
-  { value: "execution", label: "execution" },
+  { value: "execution", label: "Execution" },
 ];
 
+interface NodeDefinition {
+  general: GeneralFormValues;
+  io: IoFormValues;
+  config: ConfigFormValues;
+}
+
+const initialDefinition: NodeDefinition = {
+  general: {
+    name: "",
+    description: "",
+    category: "",
+  },
+  io: {
+    inputs: [],
+    outputs: [],
+  },
+  config: {
+    parameters: [],
+  },
+};
 export function NodeEditor() {
+  const [definitionVersion, setDefinitionVersion] = useState(0);
+  const [definition, setDefinition] =
+    useState<NodeDefinition>(initialDefinition);
+  const [pythonCode, setPythonCode] = useState(() =>
+    generatePythonCode(initialDefinition),
+  );
+
+  function updateDefinition(nextDefinition: NodeDefinition) {
+    setDefinition(nextDefinition);
+    setPythonCode(generatePythonCode(nextDefinition));
+  }
+
+  function handleDefinitionExtracted(nextDefinition: NodeDefinition) {
+    setDefinition(nextDefinition);
+    setDefinitionVersion((version) => version + 1);
+  }
+
   return (
     <div className={cn("flex h-full min-h-0 min-w-0 flex-col overflow-hidden")}>
-      <div>
+      <div className="flex min-h-0 min-w-0 flex-1 flex-col">
         <Tabs
           defaultValue="general"
-          className="flex min-h-0 min-w-0 flex-1 flex-col gap-0"
+          className="flex h-full min-h-0 min-w-0 flex-1 flex-col gap-0"
         >
           <TabsList
             className={cn(
@@ -46,21 +86,41 @@ export function NodeEditor() {
           </TabsList>
 
           <TabsContent value="general" className="m-0 h-full p-5 sm:p-6">
-            <GeneralTab />
+            <GeneralTab
+              key={definitionVersion}
+              values={definition.general}
+              onChange={(general) =>
+                updateDefinition({ ...definition, general })
+              }
+            />
           </TabsContent>
 
           <TabsContent value="io" className="m-0 h-full p-5 sm:p-6">
-            <IoTab />
+            <IoTab
+              key={definitionVersion}
+              values={definition.io}
+              onChange={(io) => updateDefinition({ ...definition, io })}
+            />
           </TabsContent>
 
           <TabsContent value="config" className="m-0 h-full p-5 sm:p-6">
-            <ConfigTab />
+            <ConfigTab
+              key={definitionVersion}
+              values={definition.config}
+              onChange={(config) => updateDefinition({ ...definition, config })}
+            />
           </TabsContent>
 
           <TabsContent
             value="execution"
-            className="m-0 h-full p-5 sm:p-6"
-          ></TabsContent>
+            className="m-0 h-full min-h-0 overflow-hidden p-0"
+          >
+            <ExecutionTab
+              value={pythonCode}
+              onChange={setPythonCode}
+              onDefinitionExtracted={handleDefinitionExtracted}
+            />
+          </TabsContent>
         </Tabs>
       </div>
     </div>

@@ -56,8 +56,8 @@ const configSchema = z
 
 export type ConfigFormValues = z.infer<typeof configSchema>;
 interface ConfigTabProps {
-  defaultValues?: Partial<ConfigFormValues>;
-  onChange?: (values: ConfigFormValues) => void;
+  values: ConfigFormValues;
+  onChange: (values: ConfigFormValues) => void;
   onSubmit?: (values: ConfigFormValues) => void;
 }
 
@@ -233,16 +233,10 @@ function ParameterRow({
   );
 }
 
-export function ConfigTab({
-  defaultValues,
-  onChange,
-  onSubmit,
-}: ConfigTabProps) {
+export function ConfigTab({ values, onChange, onSubmit }: ConfigTabProps) {
   const form = useForm<ConfigFormValues>({
     resolver: zodResolver(configSchema),
-    defaultValues: {
-      parameters: defaultValues?.parameters ?? [],
-    },
+    values,
     mode: "onChange",
   });
   const { fields, append, remove } = useFieldArray({
@@ -251,7 +245,7 @@ export function ConfigTab({
   });
 
   function notifyChange() {
-    onChange?.(form.getValues());
+    onChange(form.getValues());
   }
   function handleSubmit(values: ConfigFormValues) {
     onSubmit?.(values);
@@ -272,13 +266,14 @@ export function ConfigTab({
             type="button"
             variant="outline"
             size="sm"
-            onClick={() =>
+            onClick={() => {
               append({
                 name: "",
                 type: "String",
                 defaultValue: "",
-              })
-            }
+              });
+              notifyChange();
+            }}
           >
             <Plus className="mr-1 size-3.5" />
             Add parameter
@@ -320,14 +315,6 @@ export function ConfigTab({
       <div className="min-h-0 flex-1 space-y-3 overflow-y-auto p-4">
         {renderParameters()}
       </div>
-
-      {onSubmit && (
-        <div className="flex justify-end border-t px-4 py-3">
-          <Button type="submit" disabled={!form.formState.isValid}>
-            Save
-          </Button>
-        </div>
-      )}
     </form>
   );
 }

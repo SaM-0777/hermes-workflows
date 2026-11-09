@@ -36,25 +36,20 @@ const generalSchema = z.object({
 });
 export type GeneralFormValues = z.infer<typeof generalSchema>;
 interface GeneralTabProps {
-  defaultValues?: Partial<GeneralFormValues>;
-  onChange?: (values: GeneralFormValues) => void;
+  values: GeneralFormValues;
+  onChange: (values: GeneralFormValues) => void;
   onSubmit?: (values: GeneralFormValues) => void;
 }
-export function GeneralTab({
-  defaultValues,
-  onChange,
-  onSubmit,
-}: GeneralTabProps) {
+export function GeneralTab({ values, onChange, onSubmit }: GeneralTabProps) {
   const form = useForm<GeneralFormValues>({
     resolver: zodResolver(generalSchema),
-    defaultValues: {
-      name: defaultValues?.name ?? "",
-      description: defaultValues?.description ?? "",
-      category: defaultValues?.category ?? "",
-    },
+    values,
     mode: "onChange",
   });
 
+  function notifyChange() {
+    onChange(form.getValues());
+  }
   function handleSubmit(values: GeneralFormValues) {
     onSubmit?.(values);
   }
@@ -70,6 +65,10 @@ export function GeneralTab({
               <FieldLabel htmlFor="name">Name</FieldLabel>
               <Input
                 {...field}
+                onChange={(event) => {
+                  field.onChange(event);
+                  onChange(form.getValues());
+                }}
                 id="name"
                 aria-invalid={fieldState.invalid}
                 placeholder="e.g. text-processor"
@@ -91,6 +90,10 @@ export function GeneralTab({
               <FieldLabel htmlFor="description">Desription</FieldLabel>
               <Input
                 {...field}
+                onChange={(event) => {
+                  field.onChange(event);
+                  notifyChange();
+                }}
                 id="description"
                 aria-invalid={fieldState.invalid}
                 placeholder="Describe what this component does..."
@@ -123,7 +126,7 @@ export function GeneralTab({
                 name={field.name}
                 onValueChange={(value) => {
                   field.onChange(value);
-                  onChange?.(form.getValues());
+                  notifyChange();
                 }}
                 value={field.value}
               >

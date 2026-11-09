@@ -52,17 +52,14 @@ const ioSchema = z
   });
 export type IoFormValues = z.infer<typeof ioSchema>;
 interface IoTabProps {
-  defaultValues?: Partial<IoFormValues>;
-  onChange?: (values: IoFormValues) => void;
+  values: IoFormValues;
+  onChange: (values: IoFormValues) => void;
   onSubmit?: (values: IoFormValues) => void;
 }
-export function IoTab({ defaultValues, onChange, onSubmit }: IoTabProps) {
+export function IoTab({ values, onChange, onSubmit }: IoTabProps) {
   const form = useForm<IoFormValues>({
     resolver: zodResolver(ioSchema),
-    defaultValues: {
-      inputs: defaultValues?.inputs ?? [],
-      outputs: defaultValues?.outputs ?? [],
-    },
+    defaultValues: values,
     mode: "onChange",
   });
 
@@ -76,9 +73,8 @@ export function IoTab({ defaultValues, onChange, onSubmit }: IoTabProps) {
   });
 
   function notifyChange() {
-    onChange?.(form.getValues());
+    onChange(form.getValues());
   }
-
   function handleSubmit(values: IoFormValues) {
     onSubmit?.(values);
   }
@@ -149,13 +145,13 @@ export function IoTab({ defaultValues, onChange, onSubmit }: IoTabProps) {
                       <Field data-invalid={fieldState.invalid}>
                         <FieldLabel>Name</FieldLabel>
                         <Input
-                          placeholder="e.g. prompt"
-                          autoComplete="off"
                           {...field}
                           onChange={(event) => {
                             field.onChange(event);
                             notifyChange();
                           }}
+                          placeholder="e.g. prompt"
+                          autoComplete="off"
                         />
                         {fieldState.invalid && (
                           <FieldError errors={[fieldState.error]} />
@@ -217,14 +213,6 @@ export function IoTab({ defaultValues, onChange, onSubmit }: IoTabProps) {
         <div className="border-t" />
         {renderPorts("outputs", outputs.fields, outputs.append, outputs.remove)}
       </div>
-
-      {onSubmit && (
-        <div className="flex justify-end border-t px-4 py-3">
-          <Button type="submit" disabled={!form.formState.isValid}>
-            Save
-          </Button>
-        </div>
-      )}
     </form>
   );
 }
