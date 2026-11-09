@@ -26,5 +26,5 @@
       "@/*": ["./*"]
     }
   },
-  "include": ["src", "components", "providers", "lib"]
+  "include": ["src", "components", "providers", "lib", "hooks"]
 }

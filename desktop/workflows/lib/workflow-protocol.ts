@@ -5,6 +5,10 @@ import {
   readWorkflows,
   saveWorkflow,
   type WorkflowFiles,
+  readNodeLibrary,
+  saveLibraryNode,
+  updateLibraryNode,
+  deleteLibraryNode,
 } from "./workflow-storage";
 import {
   isRecord,
@@ -48,9 +52,7 @@ export function sendResponse(
   );
 }
 
-function assertPayload(
-  message: WorkflowMessage,
-): Record<string, unknown> {
+function assertPayload(message: WorkflowMessage): Record<string, unknown> {
   const payload = message.payload ?? {};
   if (!isRecord(payload)) throw new Error("Invalid request payload");
   return payload;
@@ -65,7 +67,9 @@ export async function handleWorkflowRequest(
 
   if (message.type === "WORKFLOW_LIST") {
     const workflows = await readWorkflows(files);
-    return { workflows: workflows.filter((workflow) => isValidId(workflow.id)) };
+    return {
+      workflows: workflows.filter((workflow) => isValidId(workflow.id)),
+    };
   }
 
   if (message.type === "WORKFLOW_CREATE") {
@@ -78,11 +82,7 @@ export async function handleWorkflowRequest(
 
   if (message.type === "WORKFLOW_SAVE") {
     const { id, nodes, edges, name } = payload;
-    if (
-      !isValidId(id) ||
-      !Array.isArray(nodes) ||
-      !Array.isArray(edges)
-    ) {
+    if (!isValidId(id) || !Array.isArray(nodes) || !Array.isArray(edges)) {
       throw new Error("Invalid workflow data");
     }
 
@@ -106,6 +106,37 @@ export async function handleWorkflowRequest(
     const { id } = payload;
     if (!isValidId(id)) throw new Error("Invalid workflow ID");
     return { id: await deleteWorkflow(files, id) };
+  }
+
+  if (message.type === "NODE_LIBRARY_LIST") {
+    const nodes = await readNodeLibrary(files);
+    return { nodes };
+  }
+
+  if (message.type === "NODE_LIBRARY_SAVE") {
+    const { data } = payload;
+    if (!isRecord(data)) {
+      throw new Error("Invalid node data");
+    }
+    const node = await saveLibraryNode(files, data);
+    return { node };
+  }
+
+  if (message.type === "NODE_LIBRARY_UPDATE") {
+    const { id, data } = payload;
+    if (!isValidId(id) || !isRecord(data)) {
+      throw new Error("Invalid node update data");
+    }
+    const node = await updateLibraryNode(files, id, data);
+    return { node };
+  }
+
+  if (message.type === "NODE_LIBRARY_DELETE") {
+    const { id } = payload;
+    if (!isValidId(id)) {
+      throw new Error("Invalid node ID");
+    }
+    return { id: await deleteLibraryNode(files, id) };
   }
 
   throw new Error("Unsupported workflow operation");

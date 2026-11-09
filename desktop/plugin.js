@@ -602,6 +602,67 @@ async function deleteWorkflow(files, id) {
   }
   return id;
 }
+var NODE_LIBRARY_FILE = "node-library.json";
+async function writeNodeLibrary(files, nodes) {
+  const result = await files.writeText("data", NODE_LIBRARY_FILE, JSON.stringify(nodes, null, 2));
+  if (!result.ok) {
+    throw new Error(result.message || result.error || "Could not save node library");
+  }
+}
+async function readNodeLibrary(files) {
+  const result = await files.readText("data", NODE_LIBRARY_FILE);
+  if (!result.ok) {
+    if (result.error === "not-found")
+      return [];
+    throw new Error(result.message || result.error || "Could not load node library");
+  }
+  let parsed;
+  try {
+    parsed = JSON.parse(result.text);
+  } catch {
+    throw new Error("Node library contains invalid JSON");
+  }
+  if (!Array.isArray(parsed) || !parsed.every((node) => node !== null && typeof node === "object" && typeof node.id === "string" && typeof node.data === "object" && node.data !== null && typeof node.createdAt === "string" && typeof node.updatedAt === "string")) {
+    throw new Error("Invalid node library structure");
+  }
+  return parsed;
+}
+async function saveLibraryNode(files, data) {
+  const nodes = await readNodeLibrary(files);
+  const now = new Date().toISOString();
+  const savedNode = {
+    id: crypto.randomUUID(),
+    data,
+    createdAt: now,
+    updatedAt: now
+  };
+  await writeNodeLibrary(files, [...nodes, savedNode]);
+  return savedNode;
+}
+async function updateLibraryNode(files, id, data) {
+  const nodes = await readNodeLibrary(files);
+  const existingNode = nodes.find((node) => node.id === id);
+  if (!existingNode) {
+    throw new Error("Node not found");
+  }
+  const updatedNode = {
+    ...existingNode,
+    data,
+    updatedAt: new Date().toISOString()
+  };
+  const updatedNodes = nodes.map((node) => node.id === id ? updatedNode : node);
+  await writeNodeLibrary(files, updatedNodes);
+  return updatedNode;
+}
+async function deleteLibraryNode(files, id) {
+  const nodes = await readNodeLibrary(files);
+  const updatedNodes = nodes.filter((node) => node.id !== id);
+  if (updatedNodes.length === nodes.length) {
+    throw new Error("Node not found");
+  }
+  await writeNodeLibrary(files, updatedNodes);
+  return id;
+}
 
 // desktop/workflows/ui/workflow-library.tsx
 import { jsx as jsx10, jsxs as jsxs8 } from "react/jsx-runtime";
@@ -710,7 +771,9 @@ async function handleWorkflowRequest(files, message) {
     throw new Error("Hermes file storage is unavailable");
   if (message.type === "WORKFLOW_LIST") {
     const workflows = await readWorkflows(files);
-    return { workflows: workflows.filter((workflow) => isValidId(workflow.id)) };
+    return {
+      workflows: workflows.filter((workflow) => isValidId(workflow.id))
+    };
   }
   if (message.type === "WORKFLOW_CREATE") {
     const name = typeof payload.name === "string" && payload.name.trim() ? payload.name.trim().slice(0, 120) : undefined;
@@ -741,6 +804,33 @@ async function handleWorkflowRequest(files, message) {
     if (!isValidId(id))
       throw new Error("Invalid workflow ID");
     return { id: await deleteWorkflow(files, id) };
+  }
+  if (message.type === "NODE_LIBRARY_LIST") {
+    const nodes = await readNodeLibrary(files);
+    return { nodes };
+  }
+  if (message.type === "NODE_LIBRARY_SAVE") {
+    const { data } = payload;
+    if (!isRecord(data)) {
+      throw new Error("Invalid node data");
+    }
+    const node = await saveLibraryNode(files, data);
+    return { node };
+  }
+  if (message.type === "NODE_LIBRARY_UPDATE") {
+    const { id, data } = payload;
+    if (!isValidId(id) || !isRecord(data)) {
+      throw new Error("Invalid node update data");
+    }
+    const node = await updateLibraryNode(files, id, data);
+    return { node };
+  }
+  if (message.type === "NODE_LIBRARY_DELETE") {
+    const { id } = payload;
+    if (!isValidId(id)) {
+      throw new Error("Invalid node ID");
+    }
+    return { id: await deleteLibraryNode(files, id) };
   }
   throw new Error("Unsupported workflow operation");
 }

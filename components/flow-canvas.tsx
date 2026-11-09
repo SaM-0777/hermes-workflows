@@ -91,8 +91,7 @@ export default function FlowCanvas() {
     },
     [setEdges],
   );
-
-  const onCreateNode = useCallback(() => {}, []);
+  
   const onAddNode = useCallback(
     (data: NodeData) => {
       const id = crypto.randomUUID();
@@ -158,7 +157,7 @@ export default function FlowCanvas() {
         />
       </ReactFlow>
 
-      <NodeWidget onAddNode={onAddNode} onCreateNode={onCreateNode} />
+      <NodeWidget onAddNode={onAddNode} />
     </main>
   );
 }

@@ -8,27 +8,30 @@ import {
   Grip,
   Maximize2,
   Minimize2,
-  Minus,
   MoreHorizontal,
+  Pencil,
   Pin,
   PinOff,
   Plus,
   Search,
   SearchX,
+  Trash2,
   X,
 } from "lucide-react";
 import { Badge } from "./ui/badge";
 import { Tooltip, TooltipContent, TooltipTrigger } from "./ui/tooltip";
 import { Button } from "./ui/button";
 import { Input } from "./ui/input";
-import { Tabs, TabsList, TabsTrigger } from "./ui/tabs";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "./ui/tabs";
 import {
   DropdownMenu,
   DropdownMenuContent,
+  DropdownMenuItem,
   DropdownMenuTrigger,
 } from "./ui/dropdown-menu";
 import { NodeEditor } from "./node-editor";
 import type { NodeData } from "@/lib/node";
+import { useStorage, type SavedNode } from "@/hooks/use-storage";
 
 export type WidgetMode = "expanded" | "compact" | "minimized";
 
@@ -45,16 +48,17 @@ export type WidgetSize = {
 export type NodeWidgetTab = "my-nodes" | "built-in";
 
 export interface NodeWidgetProps {
-  onCreateNode: () => void;
   onAddNode: (data: NodeData) => void;
 }
 
-export function NodeWidget({ onCreateNode, onAddNode }: NodeWidgetProps) {
+export function NodeWidget({ onAddNode }: NodeWidgetProps) {
+  const { nodes, saveNode, updateNode, deleteNode } = useStorage();
   const [mode, setMode] = useState<WidgetMode>("expanded");
   const [position, setPosition] = useState<WidgetPosition>({ x: 0, y: 0 });
   const [pinned, setPinned] = useState<boolean>(false);
   const [view, setView] = useState<"library" | "create">("library");
   const [activeTab, setActiveTab] = useState<NodeWidgetTab>("my-nodes");
+  const [selectedNode, setSelectedNode] = useState<SavedNode | null>(null);
   const [search, setSearch] = useState("");
   const [size] = useState<WidgetSize>({
     width: 350,
@@ -68,7 +72,28 @@ export function NodeWidget({ onCreateNode, onAddNode }: NodeWidgetProps) {
     y: number;
   } | null>(null);
 
-  const filteredNodes = useMemo(() => [], []);
+  const filteredNodes = useMemo(() => {
+    return nodes.filter((node) =>
+      node.data.general.name.toLowerCase().includes(search.toLowerCase()),
+    );
+  }, [nodes, search]);
+
+  const handleSaveNode = async (data: NodeData) => {
+    if (selectedNode) {
+      await handleUpdateNode(selectedNode.id, data);
+      setSelectedNode(null);
+    } else {
+      await saveNode(data);
+    }
+    setView("library");
+  };
+  const handleUpdateNode = async (id: string, data: NodeData) => {
+    await updateNode(id, data);
+    setView("library");
+  };
+  const handleDeleteNode = async (id: string) => {
+    await deleteNode(id);
+  };
 
   const updatePosition = useCallback((next: WidgetPosition) => {
     setPosition(next);
@@ -221,7 +246,14 @@ export function NodeWidget({ onCreateNode, onAddNode }: NodeWidgetProps) {
         >
           {mode === "compact" ? (
             <div className="flex items-center gap-2 p-3">
-              <Button size="sm" className="flex-1" onClick={() => {}}>
+              <Button
+                size="sm"
+                className="flex-1"
+                onClick={() => {
+                  setMode("expanded");
+                  setView("create");
+                }}
+              >
                 <Plus className="size-3.5" />
                 Create
               </Button>
@@ -275,6 +307,7 @@ export function NodeWidget({ onCreateNode, onAddNode }: NodeWidgetProps) {
                     Built-in
                   </TabsTrigger>
                 </TabsList>
+                <TabsContent value={"my-nodes"}></TabsContent>
               </Tabs>
 
               <div className="shrink-0 px-3">
@@ -288,7 +321,6 @@ export function NodeWidget({ onCreateNode, onAddNode }: NodeWidgetProps) {
                     "hover:bg-primary/8",
                   )}
                   onClick={() => {
-                    onCreateNode();
                     setMode("expanded");
                     setView("create");
                   }}
@@ -325,14 +357,22 @@ export function NodeWidget({ onCreateNode, onAddNode }: NodeWidgetProps) {
                 </Badge>
               </div>
 
-              <div className="min-h-0 flex-1 space-y-2 overflow-y-auto overscroll-contain px-3">
+              <div className="min-h-0 flex-1 space-y-2 overflow-y-auto overscroll-contain p-3">
                 {filteredNodes.length > 0 ? (
                   filteredNodes.map((node, index) => (
                     <NodeListRow
                       key={index}
-                      node={node}
+                      node={node.data}
                       handleNodeDragStart={handleNodeDragStart}
-                      onAddNode={onAddNode}
+                      onAddNode={() => onAddNode(node.data)}
+                      onEditNode={() => {
+                        setSelectedNode(node);
+                        setView("create");
+                      }}
+                      onDeleteNode={() => {
+                        handleDeleteNode(node.id);
+                        setView("library");
+                      }}
                     />
                   ))
                 ) : (
@@ -392,7 +432,14 @@ export function NodeWidget({ onCreateNode, onAddNode }: NodeWidgetProps) {
             </div>
 
             <div className="min-h-0 flex-1 overflow-hidden">
-              <NodeEditor />
+              <NodeEditor
+                data={selectedNode?.data}
+                onSave={handleSaveNode}
+                onCancel={() => {
+                  setSelectedNode(null);
+                  setView("library");
+                }}
+              />
             </div>
           </div>
         )}
@@ -408,26 +455,21 @@ export interface NodeListRowProps {
     node: NodeData,
   ) => void;
   onAddNode: (node: NodeData) => void;
-  //onEditNode: (node: NodeItem) => void;
-  //onDuplicateNode: (node: NodeItem) => void;
-  //onDeleteNode: (node: NodeItem) => void;
+  onEditNode: () => void;
+  onDeleteNode: () => void;
 }
 
 function NodeListRow({
   node,
   handleNodeDragStart,
   onAddNode,
-  //onEditNode,
-  //onDuplicateNode,
-  //onDeleteNode,
+  onEditNode,
+  onDeleteNode,
 }: NodeListRowProps) {
-  //const Icon = node.icon;
-
   return (
     <Card
       draggable
       onDragStart={(event) => handleNodeDragStart(event, node)}
-      onClick={() => onAddNode(node)}
       className={cn(
         "group relative cursor-grab gap-0 overflow-visible",
         "border-border/70 bg-card py-0 shadow-none",
@@ -437,10 +479,6 @@ function NodeListRow({
     >
       <CardContent className="p-3">
         <div className="flex min-w-0 items-center gap-2.5">
-          {/*<div className="flex size-9 shrink-0 items-center justify-center rounded-md border border-border bg-muted/70">
-            <Icon className="size-4 text-muted-foreground" />
-          </div>*/}
-
           <div className="min-w-0 flex-1">
             <p className="truncate text-sm font-medium">{node.general.name}</p>
             <p className="truncate text-xs text-muted-foreground">
@@ -449,19 +487,15 @@ function NodeListRow({
           </div>
 
           <Tooltip>
-            <TooltipTrigger>
-              <Button
-                type="button"
-                variant="ghost"
-                size="icon-sm"
-                className="size-7 shrink-0 opacity-0 transition-opacity group-hover:opacity-100 focus-visible:opacity-100"
-                onClick={(event) => {
-                  event.stopPropagation();
-                  onAddNode(node);
-                }}
-              >
-                <Plus className="size-4" />
-              </Button>
+            <TooltipTrigger
+              onClick={(event) => {
+                event.stopPropagation();
+                onAddNode(node);
+              }}
+              type="button"
+              className="size-7 shrink-0 opacity-0 transition-opacity group-hover:opacity-100 focus-visible:opacity-100"
+            >
+              <Plus className="size-4" />
             </TooltipTrigger>
             <TooltipContent>Add to canvas</TooltipContent>
           </Tooltip>
@@ -471,50 +505,26 @@ function NodeListRow({
           //  setActiveMenu(open ? node.id : null);
           //}}
           >
-            <DropdownMenuTrigger>
-              <Button
-                type="button"
-                variant="ghost"
-                size="icon-sm"
-                className="size-7 shrink-0 text-muted-foreground"
-                onClick={(event) => event.stopPropagation()}
-              >
-                <MoreHorizontal className="size-4" />
-              </Button>
+            <DropdownMenuTrigger className="size-7 shrink-0 text-muted-foreground">
+              <MoreHorizontal className="size-4" />
             </DropdownMenuTrigger>
             <DropdownMenuContent align="end" className="w-40">
-              {/*<DropdownMenuItem onClick={() => onEditNode(node)}>
+              <DropdownMenuItem onClick={onEditNode}>
                 <Pencil />
                 Edit component
               </DropdownMenuItem>
-              <DropdownMenuItem onClick={() => onDuplicateNode(node)}>
+              {/*<DropdownMenuItem onClick={() => onDuplicateNode(node)}>
                 <Copy />
                 Duplicate
               </DropdownMenuItem>
-              <DropdownMenuSeparator />
-              <DropdownMenuItem
-                variant="destructive"
-                onClick={() => onDeleteNode(node)}
-              >
+              <DropdownMenuSeparator />*/}
+              <DropdownMenuItem variant="destructive" onClick={onDeleteNode}>
                 <Trash2 />
                 Delete
-              </DropdownMenuItem>*/}
+              </DropdownMenuItem>
             </DropdownMenuContent>
           </DropdownMenu>
         </div>
-
-        {/*<div className="mt-3 flex items-center justify-between">
-          <Badge
-            variant="secondary"
-            className="h-5 px-1.5 text-[10px] font-normal"
-          >
-            {node.category ?? "Custom"}
-          </Badge>
-
-          <span className="text-[11px] text-muted-foreground">
-            {node.inputs} inputs {node.outputs} outputs
-          </span>
-        </div>*/}
       </CardContent>
     </Card>
   );
