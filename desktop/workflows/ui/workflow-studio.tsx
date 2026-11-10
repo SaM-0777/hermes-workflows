@@ -18,7 +18,6 @@ import {
   type WorkflowDocument,
 } from "../lib/workflow-validation";
 import {
-  deleteWorkflow,
   loadWorkflow,
   saveWorkflow,
   type WorkflowFiles,
@@ -255,6 +254,14 @@ export function WorkflowStudioPage({ ctx }: WorkflowStudioPageProps) {
       if (!isRecord(message) || !isWorkflowMessage(message)) return;
 
       try {
+        if (message.type === "NAVIGATE") {
+          const path = message.payload?.path;
+          if (typeof path === "string" && path.startsWith("/")) {
+            host.navigate(path);
+          }
+          return;
+        }
+
         const result = await handleWorkflowRequest(ctx.files, message);
         if (isRecord(result.workflow) && isWorkflowDocument(result.workflow)) {
           workflowRef.current = result.workflow;
@@ -314,21 +321,6 @@ export function WorkflowStudioPage({ ctx }: WorkflowStudioPageProps) {
               ? "Saved"
               : ""}
         </span>
-        <div className="ml-auto">
-          <WorkflowActions
-            disabled={!workflowId || loading}
-            onDelete={() => setDeleteOpen(true)}
-          />
-        </div>
-        <DeleteWorkflowDialog
-          open={deleteOpen}
-          onClose={() => setDeleteOpen(false)}
-          onConfirm={async () => {
-            if (!workflowId) return;
-            await deleteWorkflow(ctx.files, workflowId);
-            host.navigate("/workflows");
-          }}
-        />
       </div>
       <div className="relative min-h-0 flex-1">
         <SandboxedFrame

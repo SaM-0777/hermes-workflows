@@ -1,4 +1,4 @@
-import { useCallback, useEffect } from "react";
+import { useCallback, useEffect, useState } from "react";
 import {
   addEdge,
   Background,
@@ -13,11 +13,14 @@ import {
   type NodeProps,
   type Edge,
   type IsValidConnection,
+  Panel,
 } from "@xyflow/react";
-import { Code2 } from "lucide-react";
+import { Code2, Play, Save, Square, Trash2 } from "lucide-react";
 import type { NodeData, WorkflowNode } from "@/lib/node";
 import { NodeWidget } from "./node-widget";
 import { BaseNode } from "./base-node";
+import { Button } from "./ui/button";
+import DeleteWorkflow from "./delete-flow";
 
 const nodeTypes = {
   base: ({ id, data, selected }: NodeProps<WorkflowNode>) => (
@@ -29,6 +32,8 @@ export default function FlowCanvas() {
   const { screenToFlowPosition, getNode } = useReactFlow<WorkflowNode, Edge>();
   const [nodes, setNodes, onNodesChange] = useNodesState<WorkflowNode>([]);
   const [edges, setEdges, onEdgesChange] = useEdgesState<Edge>([]);
+  const [isRunning, setIsRunning] = useState(false);
+  const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
 
   const isValidConnection: IsValidConnection<Edge> = useCallback(
     (connection) => {
@@ -91,7 +96,6 @@ export default function FlowCanvas() {
     },
     [setEdges],
   );
-  
   const onAddNode = useCallback(
     (data: NodeData) => {
       const id = crypto.randomUUID();
@@ -111,6 +115,17 @@ export default function FlowCanvas() {
     },
     [screenToFlowPosition, setNodes],
   );
+
+  const handleRun = () => {
+    setIsRunning(true);
+  };
+  const handleStop = () => {
+    setIsRunning(false);
+  };
+  const handleSave = () => {};
+  const handleDelete = () => {
+    setDeleteDialogOpen(true);
+  };
 
   return (
     <main className="relative w-full h-full text-foreground">
@@ -155,9 +170,49 @@ export default function FlowCanvas() {
             bottom: 12,
           }}
         />
+
+        <Panel position="top-right" className="flex items-center gap-2">
+          {isRunning ? (
+            <Button
+              variant="destructive"
+              size="sm"
+              onClick={handleStop}
+              className="gap-2 shadow-sm"
+            >
+              <Square className="size-3.5 fill-current" />
+              Stop workflow
+            </Button>
+          ) : (
+            <Button size="sm" onClick={handleRun} className="gap-2 shadow-sm">
+              <Play className="size-3.5 fill-current" />
+              Run workflow
+            </Button>
+          )}
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={handleSave}
+            className="gap-2 bg-background shadow-sm"
+          >
+            <Save className="size-3.5" />
+          </Button>
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={handleDelete}
+            className="gap-2 bg-background text-destructive shadow-sm hover:text-destructive"
+          >
+            <Trash2 className="size-3.5" />
+          </Button>
+        </Panel>
       </ReactFlow>
 
       <NodeWidget onAddNode={onAddNode} />
+
+      <DeleteWorkflow
+        open={deleteDialogOpen}
+        setOpenChange={setDeleteDialogOpen}
+      />
     </main>
   );
 }

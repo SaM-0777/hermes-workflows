@@ -838,112 +838,6 @@ async function handleWorkflowRequest(files, message) {
 // desktop/workflows/ui/workflow-studio.tsx
 import { jsx as jsx11, jsxs as jsxs9 } from "react/jsx-runtime";
 var STUDIO_URL = "http://localhost:5173";
-function WorkflowActions({ onDelete, disabled }) {
-  const [open, setOpen] = useState3(false);
-  const menuRef = useRef2(null);
-  useEffect3(() => {
-    if (!open)
-      return;
-    const closeOnOutsidePointer = (event) => {
-      if (!menuRef.current?.contains(event.target))
-        setOpen(false);
-    };
-    document.addEventListener("pointerdown", closeOnOutsidePointer);
-    return () => document.removeEventListener("pointerdown", closeOnOutsidePointer);
-  }, [open]);
-  return /* @__PURE__ */ jsxs9("div", {
-    className: "relative",
-    ref: menuRef,
-    children: [
-      /* @__PURE__ */ jsx11("button", {
-        "aria-expanded": open,
-        "aria-label": "Workspace actions",
-        className: "inline-flex size-7 items-center justify-center rounded-lg border border-(--ui-stroke-tertiary) bg-(--ui-bg-tertiary) text-foreground/80 shadow-sm transition-colors hover:bg-(--chrome-action-hover) hover:text-foreground focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-ring disabled:pointer-events-none disabled:opacity-50",
-        disabled,
-        onClick: () => setOpen((value) => !value),
-        type: "button",
-        children: /* @__PURE__ */ jsx11(Codicon4, {
-          name: "ellipsis",
-          size: "0.875rem"
-        })
-      }),
-      open ? /* @__PURE__ */ jsx11("div", {
-        className: "absolute right-0 top-full z-50 mt-1 min-w-44 rounded-md bg-popover p-1 text-popover-foreground shadow-md",
-        role: "menu",
-        children: /* @__PURE__ */ jsxs9("button", {
-          className: "flex w-full items-center gap-2 rounded-[3px] px-2.5 py-1.5 text-left text-xs text-destructive transition-colors hover:bg-destructive/10 focus-visible:bg-(--ui-control-active-background) focus-visible:outline-hidden",
-          onClick: () => {
-            setOpen(false);
-            onDelete();
-          },
-          role: "menuitem",
-          type: "button",
-          children: [
-            /* @__PURE__ */ jsx11(Codicon4, {
-              name: "trash",
-              size: "0.875rem"
-            }),
-            "Delete workspace"
-          ]
-        })
-      }) : null
-    ]
-  });
-}
-function DeleteWorkflowDialog({
-  open,
-  onClose,
-  onConfirm
-}) {
-  const [busy, setBusy] = useState3(false);
-  if (!open)
-    return null;
-  return /* @__PURE__ */ jsx11("div", {
-    "aria-modal": "true",
-    className: "fixed inset-0 z-100 grid place-items-center bg-black/50 p-4",
-    role: "dialog",
-    children: /* @__PURE__ */ jsxs9("div", {
-      className: "w-full max-w-md rounded-lg border border-(--ui-border) bg-popover p-4 text-popover-foreground shadow-xl",
-      children: [
-        /* @__PURE__ */ jsxs9("div", {
-          className: "space-y-1",
-          children: [
-            /* @__PURE__ */ jsx11("h2", {
-              className: "text-sm font-semibold",
-              children: "Delete workflow?"
-            }),
-            /* @__PURE__ */ jsx11("p", {
-              className: "text-xs leading-relaxed text-(--ui-text-secondary)",
-              children: "This workflow will be moved to trash."
-            })
-          ]
-        }),
-        /* @__PURE__ */ jsxs9("div", {
-          className: "mt-5 flex justify-end gap-2",
-          children: [
-            /* @__PURE__ */ jsx11("button", {
-              className: "rounded-[3px] px-2.5 py-1.5 text-xs font-medium text-(--ui-text-secondary) transition-colors hover:bg-(--chrome-action-hover) hover:text-foreground focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-ring disabled:pointer-events-none disabled:opacity-50",
-              disabled: busy,
-              onClick: onClose,
-              type: "button",
-              children: "Cancel"
-            }),
-            /* @__PURE__ */ jsx11("button", {
-              className: "rounded-[3px] bg-destructive px-2.5 py-1.5 text-xs font-medium text-white transition-colors hover:bg-destructive/90 focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-destructive/30 disabled:pointer-events-none disabled:opacity-50",
-              disabled: busy,
-              onClick: () => {
-                setBusy(true);
-                onConfirm().catch(() => setBusy(false));
-              },
-              type: "button",
-              children: busy ? "Deleting..." : "Delete workflow"
-            })
-          ]
-        })
-      ]
-    })
-  });
-}
 function WorkflowStudioPage({ ctx }) {
   const frameRef = useRef2(null);
   const workflowRef = useRef2(null);
@@ -1036,6 +930,13 @@ function WorkflowStudioPage({ ctx }) {
       if (!isRecord(message) || !isWorkflowMessage(message))
         return;
       try {
+        if (message.type === "NAVIGATE") {
+          const path = message.payload?.path;
+          if (typeof path === "string" && path.startsWith("/")) {
+            host2.navigate(path);
+          }
+          return;
+        }
         const result = await handleWorkflowRequest(ctx.files, message);
         if (isRecord(result.workflow) && isWorkflowDocument(result.workflow)) {
           workflowRef.current = result.workflow;
@@ -1090,23 +991,6 @@ function WorkflowStudioPage({ ctx }) {
             className: "text-[0.6875rem] text-(--ui-text-tertiary)",
             "aria-live": "polite",
             children: nameStatus === "saving" ? "Saving" : nameStatus === "saved" ? "Saved" : ""
-          }),
-          /* @__PURE__ */ jsx11("div", {
-            className: "ml-auto",
-            children: /* @__PURE__ */ jsx11(WorkflowActions, {
-              disabled: !workflowId || loading,
-              onDelete: () => setDeleteOpen(true)
-            })
-          }),
-          /* @__PURE__ */ jsx11(DeleteWorkflowDialog, {
-            open: deleteOpen,
-            onClose: () => setDeleteOpen(false),
-            onConfirm: async () => {
-              if (!workflowId)
-                return;
-              await deleteWorkflow(ctx.files, workflowId);
-              host2.navigate("/workflows");
-            }
           })
         ]
       }),
