@@ -1,4 +1,4 @@
-import { useState, type ReactNode } from "react";
+import { useMemo, useState, type ReactNode } from "react";
 import { Edit, Trash2, type LucideIcon } from "lucide-react";
 import { cva } from "class-variance-authority";
 import { useReactFlow, Handle, type NodeHandle, Position } from "@xyflow/react";
@@ -12,8 +12,9 @@ import {
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Separator } from "@/components/ui/separator";
-import type { NodeData, NodeStatus } from "@/lib/node";
+import { getPortValue, type NodeData, type NodeStatus } from "@/lib/node";
 import { NodeEditor } from "./node-editor";
+import { NodeValue } from "./node-value";
 
 export interface BaseNodeProps {
   id: string;
@@ -24,6 +25,8 @@ export interface BaseNodeProps {
   children?: ReactNode;
   handles?: NodeHandle[];
   className?: string;
+  runtimeInputs?: Record<string, unknown>;
+  runtimeOutput?: unknown;
 }
 
 const nodeStatusVariants = cva(
@@ -60,9 +63,26 @@ export function BaseNode({
   children,
   handles = [],
   className = "",
+  runtimeInputs,
+  runtimeOutput,
 }: BaseNodeProps) {
   const [openEditor, setOpenEditor] = useState<boolean>(false);
   const { updateNodeData, deleteElements } = useReactFlow();
+
+  const inputPreviews = useMemo(() => {
+    const previews = new Map<string, ReturnType<typeof getPortValue>>();
+    for (const input of data.io?.inputs ?? []) {
+      previews.set(input.name, getPortValue(runtimeInputs, input.name));
+    }
+    return previews;
+  }, [data.io?.inputs, runtimeInputs]);
+  const outputPreviews = useMemo(() => {
+    const previews = new Map<string, ReturnType<typeof getPortValue>>();
+    for (const output of data.io?.outputs ?? []) {
+      previews.set(output.name, getPortValue(runtimeOutput, output.name));
+    }
+    return previews;
+  }, [data.io?.outputs, runtimeOutput]);
 
   function handleClose() {
     setOpenEditor(false);
@@ -199,29 +219,39 @@ export function BaseNode({
                   </div>
 
                   <div className="space-y-1 px-2">
-                    {data.io.inputs.map((input) => (
-                      <div
-                        key={input.name}
-                        className="group relative flex min-h-11 items-center gap-3 rounded-lg border border-transparent px-3 transition-colors hover:border-border hover:bg-muted/40"
-                      >
-                        <Handle
-                          type="target"
-                          position={Position.Left}
-                          id={input.name}
-                          className="size-2.5! -left-1.25! border-2! border-background! bg-sky-500!"
-                        />
+                    {data.io.inputs.map((input) => {
+                      const preview = inputPreviews.get(input.name);
 
-                        <div className="min-w-0 flex-1">
-                          <p className="truncate text-[13px] font-medium text-foreground">
-                            {input.name}
-                          </p>
+                      return (
+                        <div
+                          key={input.name}
+                          className="group relative flex min-h-11 items-center gap-3 rounded-lg border border-transparent px-3 transition-colors hover:border-border hover:bg-muted/40"
+                        >
+                          <Handle
+                            type="target"
+                            position={Position.Left}
+                            id={input.name}
+                            className="size-2.5! -left-1.25! border-2! border-background! bg-sky-500!"
+                          />
+
+                          <div className="min-w-0 flex-1">
+                            <p className="truncate text-[13px] font-medium text-foreground">
+                              {input.name}
+                            </p>
+                          </div>
+
+                          <span className="shrink-0 rounded-md border border-border/70 bg-background px-2 py-1 text-[10px] font-medium text-muted-foreground">
+                            {input.type}
+                          </span>
+
+                          <NodeValue
+                            type={input.type}
+                            value={preview?.value}
+                            available={preview?.available ?? false}
+                          />
                         </div>
-
-                        <span className="shrink-0 rounded-md border border-border/70 bg-background px-2 py-1 text-[10px] font-medium text-muted-foreground">
-                          {input.type}
-                        </span>
-                      </div>
-                    ))}
+                      );
+                    })}
                   </div>
                 </CardContent>
               )}
@@ -275,29 +305,39 @@ export function BaseNode({
                   </div>
 
                   <div className="space-y-1 px-2">
-                    {data.io.outputs.map((output) => (
-                      <div
-                        key={output.name}
-                        className="group relative flex min-h-11 items-center gap-3 rounded-lg border border-transparent px-3 transition-colors hover:border-border hover:bg-muted/40"
-                      >
-                        <div className="min-w-0 flex-1 text-right">
-                          <p className="truncate text-[13px] font-medium text-foreground">
-                            {output.name}
-                          </p>
+                    {data.io.outputs.map((output) => {
+                      const preview = outputPreviews.get(output.name);
+
+                      return (
+                        <div
+                          key={output.name}
+                          className="group relative flex min-h-11 items-center gap-3 rounded-lg border border-transparent px-3 transition-colors hover:border-border hover:bg-muted/40"
+                        >
+                          <div className="min-w-0 flex-1 text-right">
+                            <p className="truncate text-[13px] font-medium text-foreground">
+                              {output.name}
+                            </p>
+                          </div>
+
+                          <span className="shrink-0 rounded-md border border-border/70 bg-background px-2 py-1 text-[10px] font-medium text-muted-foreground">
+                            {output.type}
+                          </span>
+
+                          <NodeValue
+                            type={output.type}
+                            value={preview?.value}
+                            available={preview?.available ?? false}
+                          />
+
+                          <Handle
+                            type="source"
+                            position={Position.Right}
+                            id={output.name}
+                            className="size-2.5! -right-1.25! border-2! border-background! bg-emerald-500!"
+                          />
                         </div>
-
-                        <span className="shrink-0 rounded-md border border-border/70 bg-background px-2 py-1 text-[10px] font-medium text-muted-foreground">
-                          {output.type}
-                        </span>
-
-                        <Handle
-                          type="source"
-                          position={Position.Right}
-                          id={output.name}
-                          className="size-2.5! -right-1.25! border-2! border-background! bg-emerald-500!"
-                        />
-                      </div>
-                    ))}
+                      );
+                    })}
                   </div>
                 </CardContent>
               )}
@@ -311,6 +351,14 @@ export function BaseNode({
           )}
 
           <Separator />
+
+          {/*<NodeOutput
+            status={status}
+            outputs={data.io?.outputs ?? []}
+            value={runtimeOutput}
+          />
+
+          <Separator />*/}
 
           <CardFooter className="flex min-h-10 items-center justify-between gap-2 px-3.5 py-2">
             <>

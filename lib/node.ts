@@ -23,6 +23,26 @@ export const dataTypes = [
   "File",
 ] as const;
 
+export function getPortValue(
+  values: unknown,
+  name: string,
+): { available: boolean; value: unknown } {
+  if (
+    typeof values !== "object" ||
+    values === null ||
+    Array.isArray(values) ||
+    !Object.prototype.hasOwnProperty.call(values, name)
+  ) {
+    return { available: false, value: undefined };
+  }
+
+  const value = (values as Record<string, unknown>)[name];
+  return {
+    available: value !== undefined,
+    value,
+  };
+}
+
 export const generalSchema = z.object({
   name: z
     .string()

@@ -36,6 +36,8 @@ function WorkflowBaseNode({ id, data, selected }: NodeProps<WorkflowNode>) {
       icon={Code2}
       selected={selected}
       status={runtime?.status ?? "idle"}
+      runtimeInputs={runtime?.inputs}
+      runtimeOutput={runtime?.output}
     />
   );
 }
