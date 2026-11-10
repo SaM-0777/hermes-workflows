@@ -14,6 +14,12 @@ import { Button } from "@/components/ui/button";
 import { Separator } from "@/components/ui/separator";
 import type { NodeData } from "@/lib/node";
 import { NodeEditor } from "./node-editor";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from "./ui/dropdown-menu";
 
 export type NodeStatus = "idle" | "ready" | "running" | "success" | "error";
 export interface BaseNodeProps {
@@ -63,13 +69,18 @@ export function BaseNode({
 }: BaseNodeProps) {
   const [status] = useState<NodeStatus>("idle");
   const [openEditor, setOpenEditor] = useState<boolean>(false);
-  const { updateNodeData } = useReactFlow();
+  const { updateNodeData, deleteElements } = useReactFlow();
 
   function handleClose() {
     setOpenEditor(false);
   }
   function handleSave(updatedData: NodeData) {
     updateNodeData(id, updatedData);
+  }
+  function handleDelete() {
+    void deleteElements({
+      nodes: [{ id }],
+    });
   }
 
   return (
@@ -124,7 +135,7 @@ export function BaseNode({
                 </span>
               </Button>
 
-              <Button
+              {/*<Button
                 type="button"
                 variant="ghost"
                 size="icon"
@@ -138,7 +149,15 @@ export function BaseNode({
                 <span className="text-lg leading-none">
                   <Ellipsis />
                 </span>
-              </Button>
+              </Button>*/}
+              <NodeDropdown
+                onEdit={() => {
+                  setOpenEditor(true);
+                }}
+                onDelete={() => {
+                  handleDelete();
+                }}
+              />
             </div>
           </CardHeader>
 
@@ -301,5 +320,42 @@ export function BaseNode({
         </div>
       )}
     </div>
+  );
+}
+
+interface NodeDropdownProps {
+  onEdit: () => void;
+  onDelete: () => void;
+}
+function NodeDropdown({ onEdit, onDelete }: NodeDropdownProps) {
+  return (
+    <DropdownMenu>
+      <DropdownMenuTrigger
+        render={
+          <Button
+            type="button"
+            variant="ghost"
+            size="icon"
+            className="nodrag nopan size-7 shrink-0 text-muted-foreground"
+          >
+            <span className="text-lg leading-none">
+              <Ellipsis />
+            </span>
+          </Button>
+        }
+      />
+      <DropdownMenuContent align="start" className="w-40">
+        <DropdownMenuItem className={"text-sm"} onClick={onEdit}>
+          Edit
+        </DropdownMenuItem>
+        <DropdownMenuItem
+          className={"text-sm"}
+          variant="destructive"
+          onClick={onDelete}
+        >
+          Remove
+        </DropdownMenuItem>
+      </DropdownMenuContent>
+    </DropdownMenu>
   );
 }
