@@ -33,115 +33,6 @@ export interface WorkflowStudioPageProps {
   ctx: WorkflowStudioContext;
 }
 
-interface WorkflowActionsProps {
-  onDelete: () => void;
-  disabled: boolean;
-}
-
-function WorkflowActions({ onDelete, disabled }: WorkflowActionsProps) {
-  const [open, setOpen] = useState(false);
-  const menuRef = useRef<HTMLDivElement | null>(null);
-
-  useEffect(() => {
-    if (!open) return;
-
-    const closeOnOutsidePointer = (event: PointerEvent) => {
-      if (!menuRef.current?.contains(event.target as Node)) setOpen(false);
-    };
-
-    document.addEventListener("pointerdown", closeOnOutsidePointer);
-    return () =>
-      document.removeEventListener("pointerdown", closeOnOutsidePointer);
-  }, [open]);
-
-  return (
-    <div className="relative" ref={menuRef}>
-      <button
-        aria-expanded={open}
-        aria-label="Workspace actions"
-        className="inline-flex size-7 items-center justify-center rounded-lg border border-(--ui-stroke-tertiary) bg-(--ui-bg-tertiary) text-foreground/80 shadow-sm transition-colors hover:bg-(--chrome-action-hover) hover:text-foreground focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-ring disabled:pointer-events-none disabled:opacity-50"
-        disabled={disabled}
-        onClick={() => setOpen((value) => !value)}
-        type="button"
-      >
-        <Codicon name="ellipsis" size="0.875rem" />
-      </button>
-      {open ? (
-        <div
-          className="absolute right-0 top-full z-50 mt-1 min-w-44 rounded-md bg-popover p-1 text-popover-foreground shadow-md"
-          role="menu"
-        >
-          <button
-            className="flex w-full items-center gap-2 rounded-[3px] px-2.5 py-1.5 text-left text-xs text-destructive transition-colors hover:bg-destructive/10 focus-visible:bg-(--ui-control-active-background) focus-visible:outline-hidden"
-            onClick={() => {
-              setOpen(false);
-              onDelete();
-            }}
-            role="menuitem"
-            type="button"
-          >
-            <Codicon name="trash" size="0.875rem" />
-            Delete workspace
-          </button>
-        </div>
-      ) : null}
-    </div>
-  );
-}
-
-interface DeleteWorkflowDialogProps {
-  open: boolean;
-  onClose: () => void;
-  onConfirm: () => Promise<void>;
-}
-
-function DeleteWorkflowDialog({
-  open,
-  onClose,
-  onConfirm,
-}: DeleteWorkflowDialogProps) {
-  const [busy, setBusy] = useState(false);
-
-  if (!open) return null;
-
-  return (
-    <div
-      aria-modal="true"
-      className="fixed inset-0 z-100 grid place-items-center bg-black/50 p-4"
-      role="dialog"
-    >
-      <div className="w-full max-w-md rounded-lg border border-(--ui-border) bg-popover p-4 text-popover-foreground shadow-xl">
-        <div className="space-y-1">
-          <h2 className="text-sm font-semibold">Delete workflow?</h2>
-          <p className="text-xs leading-relaxed text-(--ui-text-secondary)">
-            This workflow will be moved to trash.
-          </p>
-        </div>
-        <div className="mt-5 flex justify-end gap-2">
-          <button
-            className="rounded-[3px] px-2.5 py-1.5 text-xs font-medium text-(--ui-text-secondary) transition-colors hover:bg-(--chrome-action-hover) hover:text-foreground focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-ring disabled:pointer-events-none disabled:opacity-50"
-            disabled={busy}
-            onClick={onClose}
-            type="button"
-          >
-            Cancel
-          </button>
-          <button
-            className="rounded-[3px] bg-destructive px-2.5 py-1.5 text-xs font-medium text-white transition-colors hover:bg-destructive/90 focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-destructive/30 disabled:pointer-events-none disabled:opacity-50"
-            disabled={busy}
-            onClick={() => {
-              setBusy(true);
-              void onConfirm().catch(() => setBusy(false));
-            }}
-            type="button"
-          >
-            {busy ? "Deleting..." : "Delete workflow"}
-          </button>
-        </div>
-      </div>
-    </div>
-  );
-}
 
 export function WorkflowStudioPage({ ctx }: WorkflowStudioPageProps) {
   const frameRef = useRef<HTMLIFrameElement | null>(null);
@@ -162,7 +53,6 @@ export function WorkflowStudioPage({ ctx }: WorkflowStudioPageProps) {
   const [nameStatus, setNameStatus] = useState<"idle" | "saving" | "saved">(
     "saved",
   );
-  const [deleteOpen, setDeleteOpen] = useState(false);
 
   useEffect(() => {
     let active = true;

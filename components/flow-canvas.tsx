@@ -34,6 +34,7 @@ export default function FlowCanvas() {
   const [edges, setEdges, onEdgesChange] = useEdgesState<Edge>([]);
   const [isRunning, setIsRunning] = useState(false);
   const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
+  const [isSaving, setIsSaving] = useState(false);
 
   const isValidConnection: IsValidConnection<Edge> = useCallback(
     (connection) => {
@@ -68,6 +69,60 @@ export default function FlowCanvas() {
     },
     [getNode],
   );
+
+  useEffect(() => {
+    const workflowId = new URLSearchParams(window.location.search).get(
+      "workflowId",
+    );
+    if (!workflowId) return;
+
+    const requestId = crypto.randomUUID();
+    const timeout = window.setTimeout(() => {
+      cleanup();
+      console.error("Workflow loading timed out");
+    }, 30_000);
+
+    const handleMessage = (event: MessageEvent) => {
+      if (event.source !== window.parent) return;
+      const response = event.data;
+
+      if (
+        response?.protocol !== "workflow-studio:v1" ||
+        response?.requestId !== requestId ||
+        response?.type !== "WORKFLOW_LOAD_RESULT"
+      ) {
+        return;
+      }
+
+      cleanup();
+
+      if (!response.ok || !response.workflow) {
+        console.error(response.error || "Could not load workflow");
+        return;
+      }
+
+      setNodes(response.workflow.nodes);
+      setEdges(response.workflow.edges);
+    };
+
+    const cleanup = () => {
+      window.clearTimeout(timeout);
+      window.removeEventListener("message", handleMessage);
+    };
+
+    window.addEventListener("message", handleMessage);
+    window.parent.postMessage(
+      {
+        protocol: "workflow-studio:v1",
+        requestId,
+        type: "WORKFLOW_LOAD",
+        payload: { id: workflowId },
+      },
+      "*",
+    );
+
+    return cleanup;
+  }, [setNodes, setEdges]);
 
   useEffect(() => {
     setEdges((currentEdges) => {
@@ -122,7 +177,74 @@ export default function FlowCanvas() {
   const handleStop = () => {
     setIsRunning(false);
   };
-  const handleSave = () => {};
+  const handleSave = async () => {
+    if (isSaving) return;
+
+    const workflowId = new URLSearchParams(window.location.search).get(
+      "workflowId",
+    );
+    if (!workflowId) {
+      console.error("Workflow ID is missing");
+      return;
+    }
+
+    setIsSaving(true);
+
+    const requestId = crypto.randomUUID();
+
+    try {
+      await new Promise<void>((resolve, reject) => {
+        const timeout = window.setTimeout(() => {
+          cleanup();
+          reject(new Error("Save request timed out"));
+        }, 30_000);
+        const handleMessage = (event: MessageEvent) => {
+          if (event.source !== window.parent) return;
+          const response = event.data;
+          if (
+            response?.protocol !== "workflow-studio:v1" ||
+            response?.requestId !== requestId ||
+            response?.type !== "WORKFLOW_SAVE_RESULT"
+          ) {
+            return;
+          }
+
+          cleanup();
+
+          if (!response.ok) {
+            reject(new Error(response.error || "Could not save workflow"));
+            return;
+          }
+
+          resolve();
+        };
+
+        const cleanup = () => {
+          window.clearTimeout(timeout);
+          window.removeEventListener("message", handleMessage);
+        };
+
+        window.addEventListener("message", handleMessage);
+        window.parent.postMessage(
+          {
+            protocol: "workflow-studio:v1",
+            requestId,
+            type: "WORKFLOW_SAVE",
+            payload: {
+              id: workflowId,
+              nodes,
+              edges,
+            },
+          },
+          "*",
+        );
+      });
+    } catch (error) {
+      console.error("Workflow save failed:", error);
+    } finally {
+      setIsSaving(false);
+    }
+  };
   const handleDelete = () => {
     setDeleteDialogOpen(true);
   };
@@ -191,6 +313,7 @@ export default function FlowCanvas() {
           <Button
             variant="outline"
             size="sm"
+            disabled={isSaving}
             onClick={handleSave}
             className="gap-2 bg-background shadow-sm"
           >

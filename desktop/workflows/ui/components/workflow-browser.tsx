@@ -1,20 +1,28 @@
+import { Button, Codicon, host } from "@hermes/plugin-sdk";
 import { memo, useMemo, useState } from "react";
 import { CategoryFilter } from "./category-filter";
 import { CatalogCard } from "./catalog-card";
 import { PanelEmpty } from "./panel-empty";
 import { SearchHeader } from "./search-header";
 import type { WorkflowDocument } from "../../lib/workflow-validation";
+import {
+  createWorkflow,
+  WorkflowLibraryContext,
+} from "../../lib/workflow-storage";
 
 export interface WorkflowBrowserProps {
+  ctx: WorkflowLibraryContext;
   workflows: WorkflowDocument[];
   onOpen: (id: string) => void;
 }
 
 export const WorkflowBrowser = memo(function WorkflowBrowser({
+  ctx,
   workflows,
   onOpen,
 }: WorkflowBrowserProps) {
   const [query, setQuery] = useState("");
+  const [createPending, setCreatePending] = useState(false);
   const filteredWorkflows = useMemo(() => {
     const normalizedQuery = query.trim().toLocaleLowerCase();
     if (!normalizedQuery) return workflows;
@@ -23,6 +31,26 @@ export const WorkflowBrowser = memo(function WorkflowBrowser({
       workflow.name.toLocaleLowerCase().includes(normalizedQuery),
     );
   }, [query, workflows]);
+
+  const handleCreateWorkflow = async () => {
+    if (createPending) return;
+    setCreatePending(true);
+
+    try {
+      const workflow = await createWorkflow(ctx.files);
+      host.navigate(
+        `/workflow-studio?workflowId=${encodeURIComponent(workflow.id)}`,
+      );
+    } catch (error) {
+      host.notify({
+        kind: "error",
+        message:
+          error instanceof Error ? error.message : "Could not create workflow",
+      });
+    } finally {
+      setCreatePending(false);
+    }
+  };
 
   return (
     <div className="@container/catalog flex h-full min-h-0 min-w-0">
@@ -65,6 +93,12 @@ export const WorkflowBrowser = memo(function WorkflowBrowser({
                           query.trim()
                             ? `No workflows match “${query.trim()}”.`
                             : "Create a workflow to see it here."
+                        }
+                        action={
+                          <Button size="sm" onClick={handleCreateWorkflow}>
+                            <Codicon name="plus" />
+                            Create Workflow
+                          </Button>
                         }
                       />
                     )}

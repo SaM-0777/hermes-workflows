@@ -35,6 +35,10 @@ export interface WorkflowFiles {
   trash: (folder: "data", path: string) => Promise<WorkflowFilesResult>;
 }
 
+export interface WorkflowLibraryContext {
+  files: WorkflowFiles;
+}
+
 function resultMessage(
   result: { message?: string; error?: string },
   fallback: string,
@@ -156,7 +160,7 @@ export async function saveWorkflow(
     name:
       typeof input.name === "string" && input.name.trim()
         ? input.name.trim()
-        : previous.name || `workspace-${input.id}`,
+        : previous.name || `workflow-${input.id}`,
     createdAt: previous.createdAt || now,
     updatedAt: now,
     nodes: input.nodes,
@@ -325,4 +329,3 @@ export async function deleteLibraryNode(
   await writeNodeLibrary(files, updatedNodes);
   return id;
 }
-

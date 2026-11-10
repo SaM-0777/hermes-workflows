@@ -4,12 +4,8 @@ import { PanelEmpty } from "./components/panel-empty";
 import { PageLoader } from "./components/page-loader";
 import { TextTab } from "./components/text-tab";
 import { WorkflowBrowser } from "./components/workflow-browser";
-import { readWorkflows, type WorkflowFiles } from "../lib/workflow-storage";
+import { readWorkflows, WorkflowLibraryContext } from "../lib/workflow-storage";
 import type { WorkflowDocument } from "../lib/workflow-validation";
-
-interface WorkflowLibraryContext {
-  files: WorkflowFiles;
-}
 
 export interface WorkflowLibraryPageProps {
   ctx: WorkflowLibraryContext;
@@ -76,7 +72,13 @@ export function WorkflowLibraryPage({ ctx }: WorkflowLibraryPageProps) {
       <div className="min-h-0 flex-1 overflow-hidden bg-(--ui-chat-surface-background)">
         <div className="flex h-full flex-col">
           <div className="flex min-h-0 flex-1 flex-col">
-            {loader ?? <WorkflowBrowser workflows={workflows} onOpen={openWorkflow} />}
+            {loader ?? (
+              <WorkflowBrowser
+                ctx={ctx}
+                workflows={workflows}
+                onOpen={openWorkflow}
+              />
+            )}
           </div>
         </div>
       </div>
