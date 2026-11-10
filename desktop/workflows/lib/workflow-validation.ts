@@ -3,19 +3,12 @@ export type WorkflowEdge = unknown;
 
 export interface WorkflowDocument {
   id: string;
-  name?: string;
-  createdAt?: string;
-  updatedAt?: string;
+  name: string;
   nodes: WorkflowNode[];
   edges: WorkflowEdge[];
-  [key: string]: unknown;
-}
-
-export interface WorkflowSummary {
-  id: string;
-  name: string;
   createdAt?: string;
   updatedAt?: string;
+  [key: string]: unknown;
 }
 
 export function isRecord(value: unknown): value is Record<string, unknown> {

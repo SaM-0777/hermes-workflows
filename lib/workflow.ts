@@ -110,7 +110,7 @@ export async function listWorkflows(): Promise<WorkflowSummary[]> {
 }
 
 export async function createWorkflow(
-  name = "Untitled workflow",
+  name?: string,
 ): Promise<Workflow> {
   const result = await request<{ workflow: Workflow }>("WORKFLOW_CREATE", {
     name,

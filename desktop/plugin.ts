@@ -25,9 +25,9 @@ export default {
         render: () => jsx(WorkflowLibraryPage, { ctx }),
       },
       {
-        id: "workflow-editor-page",
+        id: "workflow-studio-page",
         area: ROUTES_AREA,
-        data: { path: "/workflow-editor" },
+        data: { path: "/workflow-studio" },
         render: () => jsx(WorkflowStudioPage, { ctx }),
       },
       {

@@ -22,4 +22,7 @@ export default defineConfig(({ command }) => ({
   build: {
     assetsInlineLimit: Infinity,
   },
+  optimizeDeps: {
+    exclude: ["pyodide"],
+  },
 }));

@@ -5,7 +5,6 @@ import {
   type WorkflowDocument,
   type WorkflowEdge,
   type WorkflowNode,
-  type WorkflowSummary,
 } from "./workflow-validation";
 
 export const FILE_PREFIX = "workflow-";
@@ -33,10 +32,11 @@ export interface WorkflowFiles {
     text: string,
     options?: { exclusive?: boolean },
   ) => Promise<WorkflowFilesResult<Record<string, never>>>;
-  trash: (
-    folder: "data",
-    path: string,
-  ) => Promise<WorkflowFilesResult>;
+  trash: (folder: "data", path: string) => Promise<WorkflowFilesResult>;
+}
+
+export interface WorkflowLibraryContext {
+  files: WorkflowFiles;
 }
 
 function resultMessage(
@@ -52,13 +52,13 @@ export function workflowPath(id: string): string {
 
 export async function readWorkflows(
   files: WorkflowFiles,
-): Promise<WorkflowSummary[]> {
+): Promise<WorkflowDocument[]> {
   const listing = await files.list("data");
   if (!listing.ok) {
     throw new Error(resultMessage(listing, "Unable to list workflows"));
   }
 
-  const workflows: WorkflowSummary[] = [];
+  const workflows: WorkflowDocument[] = [];
 
   for (const entry of listing.entries) {
     if (
@@ -78,6 +78,8 @@ export async function readWorkflows(
         workflows.push({
           id: workflow.id,
           name: workflow.name || "Untitled workflow",
+          nodes: workflow.nodes,
+          edges: workflow.edges,
           createdAt: workflow.createdAt,
           updatedAt: workflow.updatedAt,
         });
@@ -96,13 +98,14 @@ export async function readWorkflows(
 
 export async function createWorkflow(
   files: WorkflowFiles,
-  name = "Untitled workflow",
+  name?: string,
 ): Promise<WorkflowDocument> {
   const id = crypto.randomUUID();
   const now = new Date().toISOString();
+  const defaultName = `workflow-${id}`;
   const workflow: WorkflowDocument = {
     id,
-    name: name.trim() ? name.trim().slice(0, 120) : "Untitled workflow",
+    name: name?.trim() ? name.trim() : defaultName,
     createdAt: now,
     updatedAt: now,
     nodes: [],
@@ -156,8 +159,8 @@ export async function saveWorkflow(
     id: input.id,
     name:
       typeof input.name === "string" && input.name.trim()
-        ? input.name.trim().slice(0, 120)
-        : previous.name || "Untitled workflow",
+        ? input.name.trim()
+        : previous.name || `workflow-${input.id}`,
     createdAt: previous.createdAt || now,
     updatedAt: now,
     nodes: input.nodes,
@@ -212,5 +215,117 @@ export async function deleteWorkflow(
     throw new Error(resultMessage(result, "Could not delete workflow"));
   }
 
+  return id;
+}
+
+export const NODE_LIBRARY_FILE = "node-library.json";
+
+export interface SavedNode<TData = unknown> {
+  id: string;
+  data: TData;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export async function writeNodeLibrary<TData>(
+  files: WorkflowFiles,
+  nodes: SavedNode<TData>[],
+): Promise<void> {
+  const result = await files.writeText(
+    "data",
+    NODE_LIBRARY_FILE,
+    JSON.stringify(nodes, null, 2),
+  );
+  if (!result.ok) {
+    throw new Error(
+      result.message || result.error || "Could not save node library",
+    );
+  }
+}
+
+export async function readNodeLibrary<TData = unknown>(
+  files: WorkflowFiles,
+): Promise<SavedNode<TData>[]> {
+  const result = await files.readText("data", NODE_LIBRARY_FILE);
+  if (!result.ok) {
+    if (result.error === "not-found") return [];
+    throw new Error(
+      result.message || result.error || "Could not load node library",
+    );
+  }
+
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(result.text);
+  } catch {
+    throw new Error("Node library contains invalid JSON");
+  }
+
+  if (
+    !Array.isArray(parsed) ||
+    !parsed.every(
+      (node) =>
+        node !== null &&
+        typeof node === "object" &&
+        typeof node.id === "string" &&
+        typeof node.data === "object" &&
+        node.data !== null &&
+        typeof node.createdAt === "string" &&
+        typeof node.updatedAt === "string",
+    )
+  ) {
+    throw new Error("Invalid node library structure");
+  }
+  return parsed as SavedNode<TData>[];
+}
+
+export async function saveLibraryNode<TData>(
+  files: WorkflowFiles,
+  data: TData,
+): Promise<SavedNode<TData>> {
+  const nodes = await readNodeLibrary<TData>(files);
+  const now = new Date().toISOString();
+  const savedNode: SavedNode<TData> = {
+    id: crypto.randomUUID(),
+    data,
+    createdAt: now,
+    updatedAt: now,
+  };
+  await writeNodeLibrary(files, [...nodes, savedNode]);
+  return savedNode;
+}
+
+export async function updateLibraryNode<TData>(
+  files: WorkflowFiles,
+  id: string,
+  data: TData,
+): Promise<SavedNode<TData>> {
+  const nodes = await readNodeLibrary<TData>(files);
+  const existingNode = nodes.find((node) => node.id === id);
+  if (!existingNode) {
+    throw new Error("Node not found");
+  }
+  const updatedNode: SavedNode<TData> = {
+    ...existingNode,
+    data,
+    updatedAt: new Date().toISOString(),
+  };
+  const updatedNodes = nodes.map((node) =>
+    node.id === id ? updatedNode : node,
+  );
+  await writeNodeLibrary(files, updatedNodes);
+  return updatedNode;
+}
+
+export async function deleteLibraryNode(
+  files: WorkflowFiles,
+  id: string,
+): Promise<string> {
+  const nodes = await readNodeLibrary(files);
+  const updatedNodes = nodes.filter((node) => node.id !== id);
+  if (updatedNodes.length === nodes.length) {
+    throw new Error("Node not found");
+  }
+  await writeNodeLibrary(files, updatedNodes);
   return id;
 }

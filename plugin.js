@@ -6,8 +6,8 @@ import {
 import { jsx as jsx12 } from "react/jsx-runtime";
 
 // desktop/workflows/ui/workflow-library.tsx
-import { Button as Button4, host } from "@hermes/plugin-sdk";
-import { useEffect as useEffect2, useState } from "react";
+import { Button as Button5, host as host2 } from "@hermes/plugin-sdk";
+import { useCallback, useEffect as useEffect2, useState as useState2 } from "react";
 
 // desktop/workflows/ui/components/panel-empty.tsx
 import { Codicon } from "@hermes/plugin-sdk";
@@ -178,7 +178,8 @@ function TextTab({ active, label, meta, onClick }) {
 }
 
 // desktop/workflows/ui/components/workflow-browser.tsx
-import { memo } from "react";
+import { Button as Button4, Codicon as Codicon4, host } from "@hermes/plugin-sdk";
+import { memo, useMemo, useState } from "react";
 
 // desktop/workflows/ui/components/category-filter.tsx
 import { Button as Button2, Codicon as Codicon2 } from "@hermes/plugin-sdk";
@@ -236,6 +237,29 @@ function CategoryFilter({
   });
 }
 
+// desktop/workflows/lib/format-relative-time.ts
+function formatRelativeTime(value) {
+  const timestamp = new Date(value ?? "").getTime();
+  if (!Number.isFinite(timestamp))
+    return "";
+  const seconds = Math.max(0, Math.floor((Date.now() - timestamp) / 1000));
+  if (seconds < 60)
+    return "now";
+  const minutes = Math.floor(seconds / 60);
+  if (minutes < 60)
+    return `${minutes}m`;
+  const hours = Math.floor(minutes / 60);
+  if (hours < 24)
+    return `${hours}h`;
+  const days = Math.floor(hours / 24);
+  if (days < 30)
+    return `${days}d`;
+  const months = Math.floor(days / 30);
+  if (months < 12)
+    return `${months}mo`;
+  return `${Math.floor(months / 12)}y`;
+}
+
 // desktop/workflows/ui/components/row-button.tsx
 import { jsx as jsx5 } from "react/jsx-runtime";
 function RowButton({
@@ -256,27 +280,62 @@ import { jsx as jsx6, jsxs as jsxs5 } from "react/jsx-runtime";
 function CatalogCard({
   entry,
   onOpen,
-  accentIndex,
-  style
+  accentIndex
 }) {
   return /* @__PURE__ */ jsxs5("article", {
     className: `group relative isolate min-w-0 overflow-hidden rounded-lg bg-(--ui-stroke-tertiary) p-[1.5px] transition-[box-shadow,opacity] duration-150 ${CARD_ACCENTS[accentIndex % CARD_ACCENTS.length]}`,
     "data-catalog-card": "",
     "data-catalog-variant": "default",
     "data-entry-id": entry.id,
-    style: style ?? undefined,
     children: [
       /* @__PURE__ */ jsx6("div", {
         "aria-hidden": true,
-        className: "pointer-events-none absolute left-1/2 top-1/2 aspect-square w-[200%] -translate-x-1/2 -translate-y-1/2 animate-[spin_4s_linear_infinite] bg-[conic-gradient(from_0deg,transparent_0deg_290deg,#2563eb_325deg,#60a5fa_345deg,transparent_360deg)] opacity-0 transition-opacity duration-300 group-hover:opacity-100 group-focus-within:opacity-100 motion-reduce:animate-none"
+        className: "pointer-events-none absolute left-1/2 top-1/2 aspect-square w-[200%] -translate-x-1/2 -translate-y-1/2 animate-[workflow-catalog-card-spin_3.5s_linear_infinite] bg-[conic-gradient(from_0deg,transparent_0deg_290deg,color-mix(in_srgb,var(--catalog-accent)_72%,transparent)_325deg,var(--catalog-accent)_345deg,transparent_360deg)] opacity-0 transition-opacity duration-300 group-hover:opacity-100 group-focus-within:opacity-100 motion-reduce:animate-none"
       }),
-      /* @__PURE__ */ jsx6("div", {
+      /* @__PURE__ */ jsxs5("div", {
         className: "relative z-10 flex min-h-64 min-w-0 w-full flex-col gap-2 overflow-hidden rounded-[calc(0.5rem-1.5px)] p-3 [background:radial-gradient(140%_100%_at_0%_0%,color-mix(in_srgb,var(--catalog-accent)_11%,transparent),transparent_70%),var(--ui-chat-bubble-background)]",
-        children: /* @__PURE__ */ jsx6(RowButton, {
-          className: "min-w-0 text-left text-xl font-semibold leading-snug",
-          onClick: () => onOpen(entry.id),
-          children: entry.name
-        })
+        children: [
+          /* @__PURE__ */ jsx6(RowButton, {
+            className: "min-w-0 text-left text-xl font-semibold leading-snug",
+            onClick: () => onOpen(entry.id),
+            children: entry.name
+          }),
+          /* @__PURE__ */ jsxs5("div", {
+            className: "mt-auto flex flex-wrap items-center gap-x-2 gap-y-1 text-[0.6875rem] text-(--ui-text-tertiary)",
+            children: [
+              /* @__PURE__ */ jsxs5("span", {
+                children: [
+                  entry.nodes.length,
+                  " ",
+                  entry.nodes.length === 1 ? "node" : "nodes"
+                ]
+              }),
+              /* @__PURE__ */ jsx6("span", {
+                "aria-hidden": true,
+                className: "text-(--ui-text-quaternary)",
+                children: "•"
+              }),
+              /* @__PURE__ */ jsxs5("span", {
+                children: [
+                  entry.edges.length,
+                  " ",
+                  entry.edges.length === 1 ? "edge" : "edges"
+                ]
+              }),
+              /* @__PURE__ */ jsx6("span", {
+                "aria-hidden": true,
+                className: "text-(--ui-text-quaternary)",
+                children: "•"
+              }),
+              /* @__PURE__ */ jsxs5("span", {
+                children: [
+                  "Saved ",
+                  formatRelativeTime(entry.updatedAt)
+                ]
+              })
+            ]
+          })
+        ]
       })
     ]
   });
@@ -341,63 +400,6 @@ function SearchHeader(props) {
   });
 }
 
-// desktop/workflows/ui/components/workflow-browser.tsx
-import { jsx as jsx9, jsxs as jsxs7 } from "react/jsx-runtime";
-var WorkflowBrowser = memo(function WorkflowBrowser2({
-  workflows,
-  onOpen
-}) {
-  return /* @__PURE__ */ jsx9("div", {
-    className: "@container/catalog flex h-full min-h-0 min-w-0",
-    children: /* @__PURE__ */ jsx9("div", {
-      className: "flex min-h-0 min-w-0 flex-1 flex-col",
-      children: /* @__PURE__ */ jsxs7("div", {
-        className: "flex min-h-0 min-w-0 flex-1 flex-col",
-        children: [
-          /* @__PURE__ */ jsx9(SearchHeader, {
-            loading: false,
-            scope: "saved",
-            value: "",
-            placeholder: 'Try "workflow-"',
-            onChange: () => {
-              return;
-            },
-            onKeyDown: () => {
-              return;
-            }
-          }),
-          /* @__PURE__ */ jsx9(CategoryFilter, {
-            disabled: false,
-            sizing: "equal",
-            value: "Category"
-          }),
-          /* @__PURE__ */ jsx9("div", {
-            className: "min-h-0 flex-1",
-            children: /* @__PURE__ */ jsx9("div", {
-              className: "flex h-full min-h-0 flex-col",
-              children: /* @__PURE__ */ jsx9("div", {
-                className: "capabilities-scroll",
-                children: /* @__PURE__ */ jsx9("div", {
-                  className: "catalog-filtered-results pt-(--capabilities-gap-lead) pb-2",
-                  children: /* @__PURE__ */ jsx9("div", {
-                    className: "grid grid-cols-[repeat(auto-fill,minmax(min(100%,17rem),1fr))] auto-rows-[minmax(16rem,auto)] gap-3",
-                    children: workflows.map((workflow, index) => /* @__PURE__ */ jsx9(CatalogCard, {
-                      onOpen,
-                      entry: workflow,
-                      accentIndex: index,
-                      style: null
-                    }, workflow.id))
-                  })
-                })
-              })
-            })
-          })
-        ]
-      })
-    })
-  });
-});
-
 // desktop/workflows/lib/workflow-validation.ts
 function isRecord(value) {
   return value !== null && typeof value === "object" && !Array.isArray(value);
@@ -439,6 +441,8 @@ async function readWorkflows(files) {
         workflows.push({
           id: workflow.id,
           name: workflow.name || "Untitled workflow",
+          nodes: workflow.nodes,
+          edges: workflow.edges,
           createdAt: workflow.createdAt,
           updatedAt: workflow.updatedAt
         });
@@ -447,12 +451,13 @@ async function readWorkflows(files) {
   }
   return workflows.sort((a, b) => new Date(b.updatedAt ?? "").getTime() - new Date(a.updatedAt ?? "").getTime());
 }
-async function createWorkflow(files, name = "Untitled workflow") {
+async function createWorkflow(files, name) {
   const id = crypto.randomUUID();
   const now = new Date().toISOString();
+  const defaultName = `workflow-${id}`;
   const workflow = {
     id,
-    name: name.trim() ? name.trim().slice(0, 120) : "Untitled workflow",
+    name: name?.trim() ? name.trim() : defaultName,
     createdAt: now,
     updatedAt: now,
     nodes: [],
@@ -484,7 +489,7 @@ async function saveWorkflow(files, input) {
   const now = new Date().toISOString();
   const workflow = {
     id: input.id,
-    name: typeof input.name === "string" && input.name.trim() ? input.name.trim().slice(0, 120) : previous.name || "Untitled workflow",
+    name: typeof input.name === "string" && input.name.trim() ? input.name.trim() : previous.name || `workflow-${input.id}`,
     createdAt: previous.createdAt || now,
     updatedAt: now,
     nodes: input.nodes,
@@ -523,14 +528,178 @@ async function deleteWorkflow(files, id) {
   }
   return id;
 }
+var NODE_LIBRARY_FILE = "node-library.json";
+async function writeNodeLibrary(files, nodes) {
+  const result = await files.writeText("data", NODE_LIBRARY_FILE, JSON.stringify(nodes, null, 2));
+  if (!result.ok) {
+    throw new Error(result.message || result.error || "Could not save node library");
+  }
+}
+async function readNodeLibrary(files) {
+  const result = await files.readText("data", NODE_LIBRARY_FILE);
+  if (!result.ok) {
+    if (result.error === "not-found")
+      return [];
+    throw new Error(result.message || result.error || "Could not load node library");
+  }
+  let parsed;
+  try {
+    parsed = JSON.parse(result.text);
+  } catch {
+    throw new Error("Node library contains invalid JSON");
+  }
+  if (!Array.isArray(parsed) || !parsed.every((node) => node !== null && typeof node === "object" && typeof node.id === "string" && typeof node.data === "object" && node.data !== null && typeof node.createdAt === "string" && typeof node.updatedAt === "string")) {
+    throw new Error("Invalid node library structure");
+  }
+  return parsed;
+}
+async function saveLibraryNode(files, data) {
+  const nodes = await readNodeLibrary(files);
+  const now = new Date().toISOString();
+  const savedNode = {
+    id: crypto.randomUUID(),
+    data,
+    createdAt: now,
+    updatedAt: now
+  };
+  await writeNodeLibrary(files, [...nodes, savedNode]);
+  return savedNode;
+}
+async function updateLibraryNode(files, id, data) {
+  const nodes = await readNodeLibrary(files);
+  const existingNode = nodes.find((node) => node.id === id);
+  if (!existingNode) {
+    throw new Error("Node not found");
+  }
+  const updatedNode = {
+    ...existingNode,
+    data,
+    updatedAt: new Date().toISOString()
+  };
+  const updatedNodes = nodes.map((node) => node.id === id ? updatedNode : node);
+  await writeNodeLibrary(files, updatedNodes);
+  return updatedNode;
+}
+async function deleteLibraryNode(files, id) {
+  const nodes = await readNodeLibrary(files);
+  const updatedNodes = nodes.filter((node) => node.id !== id);
+  if (updatedNodes.length === nodes.length) {
+    throw new Error("Node not found");
+  }
+  await writeNodeLibrary(files, updatedNodes);
+  return id;
+}
+
+// desktop/workflows/ui/components/workflow-browser.tsx
+import { jsx as jsx9, jsxs as jsxs7 } from "react/jsx-runtime";
+var WorkflowBrowser = memo(function WorkflowBrowser2({
+  ctx,
+  workflows,
+  onOpen
+}) {
+  const [query, setQuery] = useState("");
+  const [createPending, setCreatePending] = useState(false);
+  const filteredWorkflows = useMemo(() => {
+    const normalizedQuery = query.trim().toLocaleLowerCase();
+    if (!normalizedQuery)
+      return workflows;
+    return workflows.filter((workflow) => workflow.name.toLocaleLowerCase().includes(normalizedQuery));
+  }, [query, workflows]);
+  const handleCreateWorkflow = async () => {
+    if (createPending)
+      return;
+    setCreatePending(true);
+    try {
+      const workflow = await createWorkflow(ctx.files);
+      host.navigate(`/workflow-studio?workflowId=${encodeURIComponent(workflow.id)}`);
+    } catch (error) {
+      host.notify({
+        kind: "error",
+        message: error instanceof Error ? error.message : "Could not create workflow"
+      });
+    } finally {
+      setCreatePending(false);
+    }
+  };
+  return /* @__PURE__ */ jsxs7("div", {
+    className: "@container/catalog flex h-full min-h-0 min-w-0",
+    children: [
+      /* @__PURE__ */ jsx9("style", {
+        children: `
+        @keyframes workflow-catalog-card-spin {
+          from { transform: translate(-50%, -50%) rotate(0deg); }
+          to { transform: translate(-50%, -50%) rotate(360deg); }
+        }
+      `
+      }),
+      /* @__PURE__ */ jsx9("div", {
+        className: "flex min-h-0 min-w-0 flex-1 flex-col",
+        children: /* @__PURE__ */ jsxs7("div", {
+          className: "flex min-h-0 min-w-0 flex-1 flex-col",
+          children: [
+            /* @__PURE__ */ jsx9(SearchHeader, {
+              loading: false,
+              scope: "saved",
+              value: query,
+              placeholder: 'Try "workflow-"',
+              onChange: setQuery,
+              onKeyDown: () => {
+                return;
+              }
+            }),
+            /* @__PURE__ */ jsx9(CategoryFilter, {
+              disabled: false,
+              sizing: "equal",
+              value: "Category"
+            }),
+            /* @__PURE__ */ jsx9("div", {
+              className: "min-h-0 flex-1",
+              children: /* @__PURE__ */ jsx9("div", {
+                className: "flex h-full min-h-0 flex-col",
+                children: /* @__PURE__ */ jsx9("div", {
+                  className: "capabilities-scroll",
+                  children: /* @__PURE__ */ jsx9("div", {
+                    className: "catalog-filtered-results pt-(--capabilities-gap-lead) pb-2",
+                    children: /* @__PURE__ */ jsx9("div", {
+                      className: "grid grid-cols-[repeat(auto-fill,minmax(min(100%,17rem),1fr))] auto-rows-[minmax(16rem,auto)] gap-3",
+                      children: filteredWorkflows.length > 0 ? filteredWorkflows.map((workflow, index) => /* @__PURE__ */ jsx9(CatalogCard, {
+                        onOpen,
+                        entry: workflow,
+                        accentIndex: index
+                      }, workflow.id)) : /* @__PURE__ */ jsx9(PanelEmpty, {
+                        icon: "search",
+                        title: "No workflows found",
+                        description: query.trim() ? `No workflows match “${query.trim()}”.` : "Create a workflow to see it here.",
+                        action: /* @__PURE__ */ jsxs7(Button4, {
+                          size: "sm",
+                          onClick: handleCreateWorkflow,
+                          children: [
+                            /* @__PURE__ */ jsx9(Codicon4, {
+                              name: "plus"
+                            }),
+                            "Create Workflow"
+                          ]
+                        })
+                      })
+                    })
+                  })
+                })
+              })
+            })
+          ]
+        })
+      })
+    ]
+  });
+});
 
 // desktop/workflows/ui/workflow-library.tsx
 import { jsx as jsx10, jsxs as jsxs8 } from "react/jsx-runtime";
 function WorkflowLibraryPage({ ctx }) {
-  const [workflows, setWorkflows] = useState([]);
-  const [pending, setPending] = useState(true);
-  const [error, setError] = useState("");
-  async function refreshWorkflows() {
+  const [workflows, setWorkflows] = useState2([]);
+  const [pending, setPending] = useState2(true);
+  const [error, setError] = useState2("");
+  const refreshWorkflows = useCallback(async () => {
     setPending(true);
     setError("");
     try {
@@ -540,18 +709,18 @@ function WorkflowLibraryPage({ ctx }) {
     } finally {
       setPending(false);
     }
-  }
+  }, [ctx.files]);
   useEffect2(() => {
     refreshWorkflows();
-  }, []);
+  }, [refreshWorkflows]);
   function openWorkflow(id) {
-    host.navigate(`/workflow-editor?id=${encodeURIComponent(id)}`);
+    host2.navigate(`/workflow-studio?workflowId=${encodeURIComponent(id)}`);
   }
   const loader = pending ? /* @__PURE__ */ jsx10(PageLoader, {}) : error ? /* @__PURE__ */ jsx10(PanelEmpty, {
     icon: "error",
     title: "Failed to load workflows",
     description: error,
-    action: /* @__PURE__ */ jsx10(Button4, {
+    action: /* @__PURE__ */ jsx10(Button5, {
       size: "sm",
       onClick: () => void refreshWorkflows(),
       children: "Refresh"
@@ -584,15 +753,13 @@ function WorkflowLibraryPage({ ctx }) {
         className: "min-h-0 flex-1 overflow-hidden bg-(--ui-chat-surface-background)",
         children: /* @__PURE__ */ jsx10("div", {
           className: "flex h-full flex-col",
-          children: /* @__PURE__ */ jsxs8("div", {
+          children: /* @__PURE__ */ jsx10("div", {
             className: "flex min-h-0 flex-1 flex-col",
-            children: [
-              loader,
-              /* @__PURE__ */ jsx10(WorkflowBrowser, {
-                workflows,
-                onOpen: openWorkflow
-              })
-            ]
+            children: loader ?? /* @__PURE__ */ jsx10(WorkflowBrowser, {
+              ctx,
+              workflows,
+              onOpen: openWorkflow
+            })
           })
         })
       })
@@ -601,8 +768,13 @@ function WorkflowLibraryPage({ ctx }) {
 }
 
 // desktop/workflows/ui/workflow-studio.tsx
-import { SandboxedFrame } from "@hermes/plugin-sdk";
-import { useEffect as useEffect3, useRef as useRef2 } from "react";
+import { Button as Button6, Codicon as Codicon5, SandboxedFrame, host as host3 } from "@hermes/plugin-sdk";
+import {
+  useCallback as useCallback2,
+  useEffect as useEffect3,
+  useRef as useRef2,
+  useState as useState3
+} from "react";
 
 // desktop/workflows/lib/workflow-protocol.ts
 var PROTOCOL = "workflow-studio:v1";
@@ -629,10 +801,12 @@ async function handleWorkflowRequest(files, message) {
     throw new Error("Hermes file storage is unavailable");
   if (message.type === "WORKFLOW_LIST") {
     const workflows = await readWorkflows(files);
-    return { workflows: workflows.filter((workflow) => isValidId(workflow.id)) };
+    return {
+      workflows: workflows.filter((workflow) => isValidId(workflow.id))
+    };
   }
   if (message.type === "WORKFLOW_CREATE") {
-    const name = typeof payload.name === "string" && payload.name.trim() ? payload.name.trim().slice(0, 120) : "Untitled workflow";
+    const name = typeof payload.name === "string" && payload.name.trim() ? payload.name.trim().slice(0, 120) : undefined;
     return { workflow: await createWorkflow(files, name) };
   }
   if (message.type === "WORKFLOW_SAVE") {
@@ -661,6 +835,33 @@ async function handleWorkflowRequest(files, message) {
       throw new Error("Invalid workflow ID");
     return { id: await deleteWorkflow(files, id) };
   }
+  if (message.type === "NODE_LIBRARY_LIST") {
+    const nodes = await readNodeLibrary(files);
+    return { nodes };
+  }
+  if (message.type === "NODE_LIBRARY_SAVE") {
+    const { data } = payload;
+    if (!isRecord(data)) {
+      throw new Error("Invalid node data");
+    }
+    const node = await saveLibraryNode(files, data);
+    return { node };
+  }
+  if (message.type === "NODE_LIBRARY_UPDATE") {
+    const { id, data } = payload;
+    if (!isValidId(id) || !isRecord(data)) {
+      throw new Error("Invalid node update data");
+    }
+    const node = await updateLibraryNode(files, id, data);
+    return { node };
+  }
+  if (message.type === "NODE_LIBRARY_DELETE") {
+    const { id } = payload;
+    if (!isValidId(id)) {
+      throw new Error("Invalid node ID");
+    }
+    return { id: await deleteLibraryNode(files, id) };
+  }
   throw new Error("Unsupported workflow operation");
 }
 
@@ -669,8 +870,86 @@ import { jsx as jsx11, jsxs as jsxs9 } from "react/jsx-runtime";
 var STUDIO_URL = "http://localhost:5173";
 function WorkflowStudioPage({ ctx }) {
   const frameRef = useRef2(null);
-  const workflowId = new URLSearchParams(window.location.search).get("id");
+  const workflowRef = useRef2(null);
+  const hashQuery = window.location.hash.includes("?") ? window.location.hash.slice(window.location.hash.indexOf("?")) : "";
+  const workflowId = new URLSearchParams(hashQuery).get("workflowId") ?? new URLSearchParams(window.location.search).get("workflowId");
   const studioUrl = workflowId ? `${STUDIO_URL}/?workflowId=${encodeURIComponent(workflowId)}` : STUDIO_URL;
+  const name = workflowId ? `workflow-${workflowId}` : "Workflow Studio";
+  const [workflow, setWorkflow] = useState3(null);
+  const [nameDraft, setNameDraft] = useState3(name);
+  const [loading, setLoading] = useState3(false);
+  const [nameStatus, setNameStatus] = useState3("saved");
+  useEffect3(() => {
+    let active = true;
+    if (!workflowId) {
+      host3.notify({
+        kind: "warning",
+        message: "Open a workflow from the Workflows library."
+      });
+      return () => {
+        active = false;
+      };
+    }
+    loadWorkflow(ctx.files, workflowId).then((loaded) => {
+      if (!active)
+        return;
+      workflowRef.current = loaded;
+      setWorkflow(loaded);
+      setNameDraft(loaded.name || `workflow-${loaded.id}`);
+      setNameStatus("saved");
+    }).catch(() => {
+      if (!active)
+        return;
+      const fallback = {
+        id: workflowId,
+        name,
+        createdAt: new Date().toISOString(),
+        updatedAt: new Date().toISOString(),
+        nodes: [],
+        edges: []
+      };
+      workflowRef.current = fallback;
+      setWorkflow(fallback);
+      setNameDraft(name);
+    }).finally(() => {
+      if (active)
+        setLoading(false);
+    });
+    return () => {
+      active = false;
+    };
+  }, [ctx.files, name, workflowId]);
+  const saveName = useCallback2(async (name2) => {
+    const current = workflowRef.current;
+    if (!current || !workflowId)
+      return;
+    setNameStatus("saving");
+    try {
+      const saved = await saveWorkflow(ctx.files, {
+        id: current.id,
+        nodes: current.nodes,
+        edges: current.edges,
+        name: name2
+      });
+      workflowRef.current = saved;
+      setWorkflow(saved);
+      setNameDraft(saved.name || name2);
+      setNameStatus("saved");
+    } catch {
+      setNameStatus("idle");
+    }
+  }, [ctx.files, workflowId]);
+  useEffect3(() => {
+    const current = workflowRef.current;
+    const normalized = nameDraft.trim() || name;
+    if (!current || normalized === (current.name || name))
+      return;
+    setNameStatus("saving");
+    const timer = window.setTimeout(() => {
+      saveName(normalized);
+    }, 5000);
+    return () => window.clearTimeout(timer);
+  }, [name, nameDraft, saveName, workflow]);
   useEffect3(() => {
     const handleMessage = async (event) => {
       const frameWindow = frameRef.current?.contentWindow;
@@ -680,7 +959,37 @@ function WorkflowStudioPage({ ctx }) {
       if (!isRecord(message) || !isWorkflowMessage(message))
         return;
       try {
+        if (message.type === "NAVIGATE") {
+          const path = message.payload?.path;
+          if (typeof path === "string" && path.startsWith("/")) {
+            host3.navigate(path);
+          }
+          return;
+        }
+        if (message.type === "RUN_NODE") {
+          const payload = message.payload;
+          if (!isRecord(payload) || typeof payload.nodeId !== "string" || typeof payload.code !== "string") {
+            throw new Error("Invalid RUN_NODE request.");
+          }
+          const result2 = await ctx.rest("/run", {
+            method: "POST",
+            body: {
+              node_id: payload.nodeId,
+              code: payload.code,
+              inputs: isRecord(payload.inputs) ? payload.inputs : {}
+            }
+          });
+          sendResponse(frameWindow, message.requestId, "RUN_NODE_RESULT", {
+            ok: true,
+            result: result2
+          });
+          return;
+        }
         const result = await handleWorkflowRequest(ctx.files, message);
+        if (isRecord(result.workflow) && isWorkflowDocument(result.workflow)) {
+          workflowRef.current = result.workflow;
+          setWorkflow(result.workflow);
+        }
         sendResponse(frameWindow, message.requestId, `${message.type}_RESULT`, {
           ok: true,
           ...result
@@ -696,33 +1005,50 @@ function WorkflowStudioPage({ ctx }) {
     return () => window.removeEventListener("message", handleMessage);
   }, [ctx]);
   return /* @__PURE__ */ jsxs9("div", {
-    style: {
-      display: "flex",
-      flexDirection: "column",
-      width: "100%",
-      height: "100%",
-      minHeight: 0,
-      overflow: "hidden"
-    },
+    className: "flex h-full min-h-0 w-full flex-col overflow-hidden",
     children: [
-      /* @__PURE__ */ jsx11("div", {
-        style: {
-          padding: "16px 20px",
-          borderBottom: "1px solid var(--ui-border)",
-          flexShrink: 0
-        },
-        children: /* @__PURE__ */ jsx11("h1", {
-          style: { margin: 0, fontSize: "18px", fontWeight: 600 },
-          children: "Workflow Studio"
-        })
+      /* @__PURE__ */ jsxs9("div", {
+        className: "flex min-h-(--titlebar-height) shrink-0 items-center gap-2 px-3 py-2",
+        children: [
+          /* @__PURE__ */ jsx11(Button6, {
+            "aria-label": "Back to workflows",
+            onClick: () => host3.navigate("/workflows"),
+            size: "icon-xs",
+            variant: "ghost",
+            children: /* @__PURE__ */ jsx11(Codicon5, {
+              name: "chevron-left",
+              size: "0.875rem"
+            })
+          }),
+          /* @__PURE__ */ jsx11("input", {
+            "aria-label": "Workflow name",
+            autoCapitalize: "off",
+            autoComplete: "off",
+            autoCorrect: "off",
+            className: "h-7 min-w-0 max-w-sm rounded-[3px] border border-transparent bg-transparent px-1 text-sm font-semibold text-foreground outline-hidden placeholder:text-(--ui-text-tertiary) focus:border-(--ui-border) focus:bg-(--ui-bg-tertiary) focus:ring-1 focus:ring-ring",
+            disabled: loading || !workflowId,
+            onChange: (event) => setNameDraft(event.target.value),
+            onKeyDown: (event) => {
+              if (event.key === "Enter")
+                event.currentTarget.blur();
+            },
+            spellCheck: false,
+            value: `${nameDraft}`
+          }),
+          /* @__PURE__ */ jsx11("span", {
+            className: "text-[0.6875rem] text-(--ui-text-tertiary)",
+            "aria-live": "polite",
+            children: nameStatus === "saving" ? "Saving" : nameStatus === "saved" ? "Saved" : ""
+          })
+        ]
       }),
       /* @__PURE__ */ jsx11("div", {
-        style: { flex: 1, minHeight: 0, position: "relative" },
+        className: "relative min-h-0 flex-1",
         children: /* @__PURE__ */ jsx11(SandboxedFrame, {
           ref: frameRef,
           src: studioUrl,
           title: "Workflow Studio",
-          style: { display: "block", width: "100%", height: "100%", border: 0 }
+          className: "block size-full border-0"
         })
       })
     ]
@@ -742,9 +1068,9 @@ var plugin_default = {
         render: () => jsx12(WorkflowLibraryPage, { ctx })
       },
       {
-        id: "workflow-editor-page",
+        id: "workflow-studio-page",
         area: ROUTES_AREA,
-        data: { path: "/workflow-editor" },
+        data: { path: "/workflow-studio" },
         render: () => jsx12(WorkflowStudioPage, { ctx })
       },
       {
