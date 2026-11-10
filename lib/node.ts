@@ -212,3 +212,19 @@ export async function runNode(
     );
   });
 }
+
+export type NodeStatus = "idle" | "ready" | "running" | "success" | "error";
+export type NodeExecutionError = {
+  type?: string;
+  message: string;
+  traceback?: string;
+};
+export type NodeRuntimeState = {
+  status: NodeStatus;
+  inputs?: Record<string, unknown>;
+  output?: unknown;
+  error?: NodeExecutionError;
+  startedAt?: number;
+  completedAt?: number;
+};
+export type WorkflowRuntimeState = Record<string, NodeRuntimeState>;

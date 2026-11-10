@@ -16,17 +16,32 @@ import {
   Panel,
 } from "@xyflow/react";
 import { Code2, Play, Save, Square, Trash2 } from "lucide-react";
-import type { NodeData, WorkflowNode } from "@/lib/node";
+import type { NodeData, WorkflowNode, WorkflowRuntimeState } from "@/lib/node";
 import { NodeWidget } from "./node-widget";
 import { BaseNode } from "./base-node";
 import { Button } from "./ui/button";
 import DeleteWorkflow from "./delete-flow";
 import { buildFlowGraph } from "@/lib/flow-graph";
+import {
+  useNodeRuntimeState,
+  WorkflowRuntimeProvider,
+} from "@/providers/workflow-provider";
+
+function WorkflowBaseNode({ id, data, selected }: NodeProps<WorkflowNode>) {
+  const runtime = useNodeRuntimeState(id);
+  return (
+    <BaseNode
+      id={id}
+      data={data}
+      icon={Code2}
+      selected={selected}
+      status={runtime?.status ?? "idle"}
+    />
+  );
+}
 
 const nodeTypes = {
-  base: ({ id, data, selected }: NodeProps<WorkflowNode>) => (
-    <BaseNode id={id} data={data} icon={Code2} selected={selected} />
-  ),
+  base: WorkflowBaseNode,
 };
 
 export default function FlowCanvas() {
@@ -36,6 +51,7 @@ export default function FlowCanvas() {
   const [isRunning, setIsRunning] = useState(false);
   const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
   const [isSaving, setIsSaving] = useState(false);
+  const [runtimeState, setRuntimeState] = useState<WorkflowRuntimeState>({});
 
   const isValidConnection: IsValidConnection<Edge> = useCallback(
     (connection) => {
@@ -173,15 +189,30 @@ export default function FlowCanvas() {
   );
 
   const handleRun = async () => {
+    if (isRunning) return;
+    const connectedNodeIds = new Set<string>();
+    for (const edge of edges) {
+      connectedNodeIds.add(edge.source);
+      connectedNodeIds.add(edge.target);
+    }
+    const initialRuntimeState: WorkflowRuntimeState = {};
+    for (const node of nodes) {
+      initialRuntimeState[node.id] = {
+        status: connectedNodeIds.has(node.id) ? "ready" : "idle",
+      };
+    }
+    setRuntimeState(initialRuntimeState);
     setIsRunning(true);
     try {
-      const graph = await buildFlowGraph(nodes, edges);
-      const result = await graph.invoke({
-        results: {},
+      const graph = await buildFlowGraph(nodes, edges, (nodeId, state) => {
+        setRuntimeState((current) => ({
+          ...current,
+          [nodeId]: state,
+        }));
       });
-      console.log("Workflow result:", result);
+      await graph.invoke({ results: {} });
     } catch (error) {
-      console.log(error);
+      console.error("Workflow failed:", error);
     } finally {
       setIsRunning(false);
     }
@@ -263,91 +294,98 @@ export default function FlowCanvas() {
 
   return (
     <main className="relative w-full h-full text-foreground">
-      <ReactFlow
-        nodes={nodes}
-        edges={edges}
-        nodeTypes={nodeTypes}
-        onNodesChange={onNodesChange}
-        onEdgesChange={onEdgesChange}
-        deleteKeyCode={["Backspace", "Delete"]}
-        edgesFocusable
-        onConnect={onConnect}
-        isValidConnection={isValidConnection}
-        defaultEdgeOptions={{
-          type: "smoothstep",
-          animated: true,
-          style: {
-            stroke: "#64748b",
-            strokeWidth: 2,
-          },
-        }}
-        fitView
-        fitViewOptions={{ padding: 0.3 }}
-        colorMode="dark"
-      >
-        <Background
-          variant={BackgroundVariant.Dots}
-          gap={20}
-          size={1}
-          color="var(--border)"
-        />
-        <Controls />
-        <MiniMap
-          position="bottom-right"
-          nodeColor="#3b82f6"
-          maskColor="rgba(0, 0, 0, 0.65)"
-          style={{
-            position: "absolute",
-            top: "auto",
-            left: "auto",
-            right: 12,
-            bottom: 12,
+      <WorkflowRuntimeProvider value={runtimeState}>
+        <ReactFlow
+          nodes={nodes}
+          edges={edges}
+          nodeTypes={nodeTypes}
+          onNodesChange={onNodesChange}
+          onEdgesChange={onEdgesChange}
+          deleteKeyCode={["Backspace", "Delete"]}
+          edgesFocusable
+          onConnect={onConnect}
+          isValidConnection={isValidConnection}
+          defaultEdgeOptions={{
+            type: "smoothstep",
+            animated: true,
+            style: {
+              stroke: "#64748b",
+              strokeWidth: 2,
+            },
           }}
-        />
+          fitView
+          fitViewOptions={{ padding: 0.3 }}
+          colorMode="dark"
+        >
+          <Background
+            variant={BackgroundVariant.Dots}
+            gap={20}
+            size={1}
+            color="var(--border)"
+          />
+          <Controls />
+          <MiniMap
+            position="bottom-right"
+            nodeColor="#3b82f6"
+            maskColor="rgba(0, 0, 0, 0.65)"
+            style={{
+              position: "absolute",
+              top: "auto",
+              left: "auto",
+              right: 12,
+              bottom: 12,
+            }}
+          />
 
-        <Panel position="top-right" className="flex items-center gap-2">
-          {isRunning ? (
+          <Panel position="top-right" className="flex items-center gap-2">
+            {isRunning ? (
+              <Button
+                variant="destructive"
+                size="sm"
+                onClick={handleStop}
+                className="gap-2 shadow-sm"
+              >
+                <Square className="size-3.5 fill-current" />
+                Stop workflow
+              </Button>
+            ) : (
+              <Button
+                size="sm"
+                disabled={isRunning}
+                onClick={handleRun}
+                className="gap-2 shadow-sm"
+              >
+                <Play className="size-3.5 fill-current" />
+                Run workflow
+              </Button>
+            )}
             <Button
-              variant="destructive"
+              variant="outline"
               size="sm"
-              onClick={handleStop}
-              className="gap-2 shadow-sm"
+              disabled={isSaving}
+              onClick={handleSave}
+              className="gap-2 bg-background shadow-sm"
             >
-              <Square className="size-3.5 fill-current" />
-              Stop workflow
+              <Save className="size-3.5" />
             </Button>
-          ) : (
-            <Button size="sm" disabled={isRunning} onClick={handleRun} className="gap-2 shadow-sm">
-              <Play className="size-3.5 fill-current" />
-              Run workflow
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={handleDelete}
+              className="gap-2 bg-background text-destructive shadow-sm hover:text-destructive"
+            >
+              <Trash2 className="size-3.5" />
             </Button>
-          )}
-          <Button
-            variant="outline"
-            size="sm"
-            disabled={isSaving}
-            onClick={handleSave}
-            className="gap-2 bg-background shadow-sm"
-          >
-            <Save className="size-3.5" />
-          </Button>
-          <Button
-            variant="outline"
-            size="sm"
-            onClick={handleDelete}
-            className="gap-2 bg-background text-destructive shadow-sm hover:text-destructive"
-          >
-            <Trash2 className="size-3.5" />
-          </Button>
-        </Panel>
-      </ReactFlow>
+          </Panel>
+        </ReactFlow>
 
-      <NodeWidget onAddNode={onAddNode} />
+        <NodeWidget onAddNode={onAddNode} />
 
-      <DeleteWorkflow
-        open={deleteDialogOpen}
-        setOpenChange={setDeleteDialogOpen}
-      />
+        <DeleteWorkflow
+          open={deleteDialogOpen}
+          setOpenChange={setDeleteDialogOpen}
+        />
+      </WorkflowRuntimeProvider>
     </main>
   );
 }

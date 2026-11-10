@@ -12,10 +12,9 @@ import {
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Separator } from "@/components/ui/separator";
-import type { NodeData } from "@/lib/node";
+import type { NodeData, NodeStatus } from "@/lib/node";
 import { NodeEditor } from "./node-editor";
 
-export type NodeStatus = "idle" | "ready" | "running" | "success" | "error";
 export interface BaseNodeProps {
   id: string;
   data: NodeData;
@@ -56,12 +55,12 @@ export function BaseNode({
   id,
   data,
   icon: Icon,
+  status = "idle",
   selected = false,
   children,
   handles = [],
   className = "",
 }: BaseNodeProps) {
-  const [status] = useState<NodeStatus>("idle");
   const [openEditor, setOpenEditor] = useState<boolean>(false);
   const { updateNodeData, deleteElements } = useReactFlow();
 
