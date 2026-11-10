@@ -1,5 +1,10 @@
 import { useState, type ReactNode } from "react";
-import { Ellipsis, Play, type LucideIcon } from "lucide-react";
+import {
+  Edit,
+  Play,
+  Trash2,
+  type LucideIcon,
+} from "lucide-react";
 import { cva } from "class-variance-authority";
 import { useReactFlow, Handle, type NodeHandle, Position } from "@xyflow/react";
 import { cn } from "@/lib/utils";
@@ -14,12 +19,6 @@ import { Button } from "@/components/ui/button";
 import { Separator } from "@/components/ui/separator";
 import type { NodeData } from "@/lib/node";
 import { NodeEditor } from "./node-editor";
-import {
-  DropdownMenu,
-  DropdownMenuContent,
-  DropdownMenuItem,
-  DropdownMenuTrigger,
-} from "./ui/dropdown-menu";
 
 export type NodeStatus = "idle" | "ready" | "running" | "success" | "error";
 export interface BaseNodeProps {
@@ -122,7 +121,7 @@ export function BaseNode({
               </div>
             </div>
 
-            <div className="flex items-center gap-2">
+            <div className="flex items-center gap-1">
               <Button
                 type="button"
                 variant="ghost"
@@ -132,6 +131,36 @@ export function BaseNode({
               >
                 <span className="text-lg leading-none">
                   <Play />
+                </span>
+              </Button>
+
+              <Button
+                type="button"
+                variant="ghost"
+                size="icon"
+                className="nodrag nopan size-7 shrink-0 text-muted-foreground"
+                aria-label="Node actions"
+                onClick={() => {
+                  handleDelete();
+                }}
+              >
+                <span className="text-lg leading-none">
+                  <Trash2 />
+                </span>
+              </Button>
+
+              <Button
+                type="button"
+                variant="ghost"
+                size="icon"
+                className="nodrag nopan size-7 shrink-0 text-muted-foreground"
+                aria-label="Node actions"
+                onClick={() => {
+                  setOpenEditor(true);
+                }}
+              >
+                <span className="text-lg leading-none">
+                  <Edit />
                 </span>
               </Button>
 
@@ -150,14 +179,14 @@ export function BaseNode({
                   <Ellipsis />
                 </span>
               </Button>*/}
-              <NodeDropdown
+              {/*<NodeDropdown
                 onEdit={() => {
                   setOpenEditor(true);
                 }}
                 onDelete={() => {
                   handleDelete();
                 }}
-              />
+              />*/}
             </div>
           </CardHeader>
 
@@ -320,42 +349,5 @@ export function BaseNode({
         </div>
       )}
     </div>
-  );
-}
-
-interface NodeDropdownProps {
-  onEdit: () => void;
-  onDelete: () => void;
-}
-function NodeDropdown({ onEdit, onDelete }: NodeDropdownProps) {
-  return (
-    <DropdownMenu>
-      <DropdownMenuTrigger
-        render={
-          <Button
-            type="button"
-            variant="ghost"
-            size="icon"
-            className="nodrag nopan size-7 shrink-0 text-muted-foreground"
-          >
-            <span className="text-lg leading-none">
-              <Ellipsis />
-            </span>
-          </Button>
-        }
-      />
-      <DropdownMenuContent align="start" className="w-40">
-        <DropdownMenuItem className={"text-sm"} onClick={onEdit}>
-          Edit
-        </DropdownMenuItem>
-        <DropdownMenuItem
-          className={"text-sm"}
-          variant="destructive"
-          onClick={onDelete}
-        >
-          Remove
-        </DropdownMenuItem>
-      </DropdownMenuContent>
-    </DropdownMenu>
   );
 }
