@@ -1,3 +1,8 @@
-name: workflow
-version: "1.0.0"
-description: Workflow desktop plugin
+name: hermes-workflow
+label: Hermes Workflow
+version: 0.0.1
+author: SaM-0777
+homepage: https://github.com/SaM-0777/hermes-workflows/tree/main
+description: Visual workflow studio for designing, running, and iterating on multi-step agent and automation flows inside Hermes Desktop.
+license: MIT
+requires_hermes: ">=0.23.0"

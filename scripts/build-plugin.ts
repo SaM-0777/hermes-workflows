@@ -3,7 +3,7 @@ import path from "path";
 
 const root = process.cwd();
 const outputDir = path.join(root, "desktop");
-const outputPath = path.join(outputDir, "plugin.js");
+//const outputPath = path.join(outputDir, "plugin.js");
 const standaloneOutputPath = path.join(root, "plugin.js");
 
 process.env.NODE_ENV = "production";
