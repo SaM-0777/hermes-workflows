@@ -1,10 +1,5 @@
 import { useState, type ReactNode } from "react";
-import {
-  Edit,
-  Play,
-  Trash2,
-  type LucideIcon,
-} from "lucide-react";
+import { Edit, Trash2, type LucideIcon } from "lucide-react";
 import { cva } from "class-variance-authority";
 import { useReactFlow, Handle, type NodeHandle, Position } from "@xyflow/react";
 import { cn } from "@/lib/utils";
@@ -122,7 +117,7 @@ export function BaseNode({
             </div>
 
             <div className="flex items-center gap-1">
-              <Button
+              {/*<Button
                 type="button"
                 variant="ghost"
                 size="icon"
@@ -132,7 +127,7 @@ export function BaseNode({
                 <span className="text-lg leading-none">
                   <Play />
                 </span>
-              </Button>
+              </Button>*/}
 
               <Button
                 type="button"
