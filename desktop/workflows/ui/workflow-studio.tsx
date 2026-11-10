@@ -27,12 +27,18 @@ const STUDIO_URL = "http://localhost:5173";
 
 interface WorkflowStudioContext {
   files: WorkflowFiles;
+  rest: (
+    path: string,
+    options: {
+      method: "POST";
+      body: Record<string, unknown>;
+    },
+  ) => Promise<unknown>;
 }
 
 export interface WorkflowStudioPageProps {
   ctx: WorkflowStudioContext;
 }
-
 
 export function WorkflowStudioPage({ ctx }: WorkflowStudioPageProps) {
   const frameRef = useRef<HTMLIFrameElement | null>(null);
@@ -149,6 +155,33 @@ export function WorkflowStudioPage({ ctx }: WorkflowStudioPageProps) {
           if (typeof path === "string" && path.startsWith("/")) {
             host.navigate(path);
           }
+          return;
+        }
+
+        if (message.type === "RUN_NODE") {
+          const payload = message.payload;
+          if (
+            !isRecord(payload) ||
+            typeof payload.nodeId !== "string" ||
+            typeof payload.code !== "string"
+          ) {
+            throw new Error("Invalid RUN_NODE request.");
+          }
+
+          const result = await ctx.rest("/run", {
+            method: "POST",
+            body: {
+              node_id: payload.nodeId,
+              code: payload.code,
+              inputs: isRecord(payload.inputs) ? payload.inputs : {},
+            },
+          });
+
+          sendResponse(frameWindow, message.requestId, "RUN_NODE_RESULT", {
+            ok: true,
+            result,
+          });
+
           return;
         }
 

@@ -1,6 +1,6 @@
 import { loadPyodide, version, type PyodideInterface } from "pyodide";
-import type { NodeDefinition, PythonMethods } from "@/lib/python-code";
-import { dataTypes } from "@/lib/node";
+import type { PythonMethods } from "@/lib/python-code";
+import { dataTypes, type NodeData } from "@/lib/node";
 
 export interface PythonDiagnostic {
   message: string;
@@ -94,7 +94,7 @@ function toFormDefaultValue(value: unknown): string {
 
 export async function extractPythonDefinition(
   source: string,
-): Promise<NodeDefinition> {
+): Promise<NodeData> {
   const pyodide = await getPyodide();
 
   // Pass source through Pyodide's globals instead of interpolating it
@@ -247,7 +247,6 @@ json.dumps(metadata)
   }
 }
 
-
 export async function extractPythonMethods(
   source: string,
 ): Promise<PythonMethods> {
@@ -295,5 +294,3 @@ json.dumps(methods)
     pyodide.globals.delete("workflow_source");
   }
 }
-
-

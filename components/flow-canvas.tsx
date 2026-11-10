@@ -21,6 +21,7 @@ import { NodeWidget } from "./node-widget";
 import { BaseNode } from "./base-node";
 import { Button } from "./ui/button";
 import DeleteWorkflow from "./delete-flow";
+import { buildFlowGraph } from "@/lib/flow-graph";
 
 const nodeTypes = {
   base: ({ id, data, selected }: NodeProps<WorkflowNode>) => (
@@ -171,8 +172,19 @@ export default function FlowCanvas() {
     [screenToFlowPosition, setNodes],
   );
 
-  const handleRun = () => {
+  const handleRun = async () => {
     setIsRunning(true);
+    try {
+      const graph = await buildFlowGraph(nodes, edges);
+      const result = await graph.invoke({
+        results: {},
+      });
+      console.log("Workflow result:", result);
+    } catch (error) {
+      console.log(error);
+    } finally {
+      setIsRunning(false);
+    }
   };
   const handleStop = () => {
     setIsRunning(false);
@@ -305,7 +317,7 @@ export default function FlowCanvas() {
               Stop workflow
             </Button>
           ) : (
-            <Button size="sm" onClick={handleRun} className="gap-2 shadow-sm">
+            <Button size="sm" disabled={isRunning} onClick={handleRun} className="gap-2 shadow-sm">
               <Play className="size-3.5 fill-current" />
               Run workflow
             </Button>

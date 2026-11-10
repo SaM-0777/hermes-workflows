@@ -966,6 +966,25 @@ function WorkflowStudioPage({ ctx }) {
           }
           return;
         }
+        if (message.type === "RUN_NODE") {
+          const payload = message.payload;
+          if (!isRecord(payload) || typeof payload.nodeId !== "string" || typeof payload.code !== "string") {
+            throw new Error("Invalid RUN_NODE request.");
+          }
+          const result2 = await ctx.rest("/run", {
+            method: "POST",
+            body: {
+              node_id: payload.nodeId,
+              code: payload.code,
+              inputs: isRecord(payload.inputs) ? payload.inputs : {}
+            }
+          });
+          sendResponse(frameWindow, message.requestId, "RUN_NODE_RESULT", {
+            ok: true,
+            result: result2
+          });
+          return;
+        }
         const result = await handleWorkflowRequest(ctx.files, message);
         if (isRecord(result.workflow) && isWorkflowDocument(result.workflow)) {
           workflowRef.current = result.workflow;
