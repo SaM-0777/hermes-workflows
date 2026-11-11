@@ -652,3 +652,18 @@ REMOVE_WORKFLOW_EDGE = {
         ],
     },
 }
+
+RUN_WORKFLOW = {
+    "name": "run_workflow",
+    "description": "Run a saved workflow in Workflow Studio using its workflow ID.",
+    "parameters": {
+        "type": "object",
+        "properties": {
+            "workflow_id": {
+                "type": "string",
+                "description": "ID of the saved workflow to execute.",
+            },
+        },
+        "required": ["workflow_id"],
+    },
+}

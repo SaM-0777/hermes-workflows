@@ -142,6 +142,34 @@ export function WorkflowStudioPage({ ctx }: WorkflowStudioPageProps) {
   }, [name, nameDraft, saveName, workflow]);
 
   useEffect(() => {
+    const unsubscribe = host.onEvent(
+      "plugin.hermes-workflow.workflow.run",
+      (event: { payload?: unknown }) => {
+        const payload = event.payload;
+        if (!isRecord(payload)) return;
+
+        const workflowId = payload.workflow_id;
+        if (typeof workflowId !== "string" || !workflowId.trim()) return;
+
+        const frameWindow = frameRef.current?.contentWindow;
+        if (!frameWindow) return;
+
+        frameWindow.postMessage(
+          {
+            protocol: "workflow-studio:v1",
+            requestId: crypto.randomUUID(),
+            type: "WORKFLOW_RUN",
+            payload: { workflowId },
+          },
+          "*",
+        );
+      },
+    );
+
+    return unsubscribe;
+  }, []);
+
+  useEffect(() => {
     const handleMessage = async (event: MessageEvent) => {
       const frameWindow = frameRef.current?.contentWindow;
       if (!frameWindow || event.source !== frameWindow) return;

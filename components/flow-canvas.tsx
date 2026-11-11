@@ -191,35 +191,141 @@ export default function FlowCanvas() {
     [screenToFlowPosition, setNodes],
   );
 
-  const handleRun = async () => {
-    if (isRunning) return;
-    const connectedNodeIds = new Set<string>();
-    for (const edge of edges) {
-      connectedNodeIds.add(edge.source);
-      connectedNodeIds.add(edge.target);
-    }
-    const initialRuntimeState: WorkflowRuntimeState = {};
-    for (const node of nodes) {
-      initialRuntimeState[node.id] = {
-        status: connectedNodeIds.has(node.id) ? "ready" : "idle",
+  const loadWorkflow = (
+    workflowId: string,
+  ): Promise<{
+    nodes: WorkflowNode[];
+    edges: Edge[];
+  }> => {
+    const requestId = crypto.randomUUID();
+
+    return new Promise((resolve, reject) => {
+      const timeout = window.setTimeout(() => {
+        cleanup();
+        reject(new Error("Workflow loading timed out"));
+      }, 30_000);
+
+      const handleMessage = (event: MessageEvent) => {
+        if (event.source !== window.parent) return;
+
+        const response = event.data;
+
+        if (
+          response?.protocol !== "workflow-studio:v1" ||
+          response?.requestId !== requestId ||
+          response?.type !== "WORKFLOW_LOAD_RESULT"
+        ) {
+          return;
+        }
+
+        cleanup();
+
+        if (
+          !response.ok ||
+          !response.workflow ||
+          !Array.isArray(response.workflow.nodes) ||
+          !Array.isArray(response.workflow.edges)
+        ) {
+          reject(new Error(response.error || "Could not load workflow"));
+          return;
+        }
+
+        resolve({
+          nodes: response.workflow.nodes,
+          edges: response.workflow.edges,
+        });
       };
-    }
-    setRuntimeState(initialRuntimeState);
-    setIsRunning(true);
-    try {
-      const graph = await buildFlowGraph(nodes, edges, (nodeId, state) => {
-        setRuntimeState((current) => ({
-          ...current,
-          [nodeId]: state,
-        }));
-      });
-      await graph.invoke({ results: {} });
-    } catch (error) {
-      console.error("Workflow failed:", error);
-    } finally {
-      setIsRunning(false);
-    }
+
+      const cleanup = () => {
+        window.clearTimeout(timeout);
+        window.removeEventListener("message", handleMessage);
+      };
+
+      window.addEventListener("message", handleMessage);
+
+      window.parent.postMessage(
+        {
+          protocol: "workflow-studio:v1",
+          requestId,
+          type: "WORKFLOW_LOAD",
+          payload: { id: workflowId },
+        },
+        "*",
+      );
+    });
   };
+  const executeRun = useCallback(
+    async (nodes: WorkflowNode[], edges: Edge[]) => {
+      if (isRunning) return;
+      const connectedNodeIds = new Set<string>();
+      for (const edge of edges) {
+        connectedNodeIds.add(edge.source);
+        connectedNodeIds.add(edge.target);
+      }
+      const initialRuntimeState: WorkflowRuntimeState = {};
+      for (const node of nodes) {
+        initialRuntimeState[node.id] = {
+          status: connectedNodeIds.has(node.id) ? "ready" : "idle",
+        };
+      }
+      setRuntimeState(initialRuntimeState);
+      setIsRunning(true);
+      try {
+        const graph = await buildFlowGraph(nodes, edges, (nodeId, state) => {
+          setRuntimeState((current) => ({
+            ...current,
+            [nodeId]: state,
+          }));
+        });
+        await graph.invoke({ results: {} });
+      } catch (error) {
+        console.error("Workflow failed:", error);
+        toast.error(
+          error instanceof Error ? error.message : "Workflow execution failed",
+        );
+      } finally {
+        setIsRunning(false);
+      }
+    },
+    [isRunning],
+  );
+
+  useEffect(() => {
+    const handleMessage = async (event: MessageEvent) => {
+      if (event.source !== window.parent) return;
+
+      const message = event.data;
+
+      if (
+        message?.protocol !== "workflow-studio:v1" ||
+        message?.type !== "WORKFLOW_RUN" ||
+        typeof message?.payload?.workflowId !== "string"
+      ) {
+        return;
+      }
+
+      if (isRunning) return;
+
+      try {
+        const workflow = await loadWorkflow(message.payload.workflowId);
+
+        setNodes(workflow.nodes);
+        setEdges(workflow.edges);
+
+        await executeRun(workflow.nodes, workflow.edges);
+      } catch (error) {
+        console.error("Workflow execution request failed:", error);
+        toast.error(
+          error instanceof Error ? error.message : "Workflow execution failed",
+        );
+      }
+    };
+
+    window.addEventListener("message", handleMessage);
+
+    return () => window.removeEventListener("message", handleMessage);
+  }, [isRunning, setNodes, setEdges, executeRun]);
+
   const handleStop = () => {
     setIsRunning(false);
   };
@@ -359,7 +465,7 @@ export default function FlowCanvas() {
               <Button
                 size="sm"
                 disabled={isRunning}
-                onClick={handleRun}
+                onClick={() => executeRun(nodes, edges)}
                 className="gap-2 shadow-sm"
               >
                 <Play className="size-3.5 fill-current" />

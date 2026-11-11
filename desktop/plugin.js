@@ -1057,7 +1057,7 @@ function WorkflowStudioPage({ ctx }) {
 
 // desktop/plugin.ts
 var plugin_default = {
-  id: "workflow",
+  id: "hermes-workflow",
   name: "Workflow Studio",
   register(ctx) {
     ctx.registerMany([

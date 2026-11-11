@@ -991,3 +991,38 @@ def remove_workflow_edge(params, **kwargs):
         )
     except (ValueError, OSError, json.JSONDecodeError) as exc:
         return _error(str(exc))
+
+
+def run_workflow(params, **kwargs):
+    from hermes_cli.plugin_events import broadcast_plugin_event
+
+    workflow_id = params.get("workflow_id")
+    if not isinstance(workflow_id, str) or not workflow_id.strip():
+        return json.dumps(
+            {
+                "success": False,
+                "error": "A valid workflow_id is required.",
+            }
+        )
+    try:
+        broadcast_plugin_event(
+            "hermes-workflow",
+            "workflow.run",
+            {
+                "workflow_id": workflow_id,
+            },
+        )
+        return json.dumps(
+            {
+                "success": True,
+                "message": "Workflow execution request broadcast.",
+                "workflow_id": workflow_id,
+            }
+        )
+    except Exception as exc:
+        return json.dumps(
+            {
+                "success": False,
+                "error": str(exc),
+            }
+        )

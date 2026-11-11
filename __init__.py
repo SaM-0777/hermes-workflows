@@ -35,6 +35,7 @@ def register(ctx) -> None:
         (s.DUPLICATE_WORKFLOW_NODE, t.duplicate_workflow_node),
         (s.ADD_WORKFLOW_EDGE, t.add_workflow_edge),
         (s.REMOVE_WORKFLOW_EDGE, t.remove_workflow_edge),
+        (s.RUN_WORKFLOW, t.run_workflow),
     )
     for schema, handler in tools:
         ctx.register_tool(
