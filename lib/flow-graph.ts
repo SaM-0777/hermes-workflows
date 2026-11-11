@@ -99,6 +99,20 @@ export async function buildFlowGraph(
           (edge) => edge.target === node.id,
         );
 
+        // LangGraph triggers a node as soon as ANY parent completes. When a
+        // node has several distinct parents (a join), wait for the remaining
+        // parents instead of failing with "output is unavailable".
+        const pendingParents = incomingEdges.filter((edge) => {
+          const result = state.results[edge.source];
+          if (!isRecord(result) || !isRecord(result.output)) return true;
+          return (
+            !edge.sourceHandle || !(edge.sourceHandle in result.output)
+          );
+        });
+        if (pendingParents.length > 0) {
+          return { results: {} };
+        }
+
         for (const edge of incomingEdges) {
           const sourceHandle = edge.sourceHandle;
           const targetHandle = edge.targetHandle;

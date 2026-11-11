@@ -25,7 +25,7 @@ NODE_LIBRARY_PATH = (
     / "Hermes"
     / "plugin-files"
     / "data"
-    / "workflow"
+    / "hermes-workflow"
     / "node-library.json"
 )
 
@@ -366,7 +366,7 @@ WORKFLOW_DIR = Path(
     / "Hermes"
     / "plugin-files"
     / "data"
-    / "workflow"
+    / "hermes-workflow"
 )
 
 
