@@ -4,10 +4,21 @@ Workflow Studio is a general-purpose, agent-based workflow platform for building
 
 Complex tasks often involve multiple steps, dependencies, and parallel operations. Workflow Studio provides a visual node-based editor where you can inspect, modify, and manage workflows, with support for reusable components, custom code, typed connections, and conditional execution.
 
+---
+
+> **Beta:** Workflow Studio is currently in beta and is available on macOS only. Support for other platforms will be available in upcoming updates.
+
+---
 
 ## Showcase
 
 Explore workflows built and executed with Hermes Workflow Studio. Each showcase includes screenshots, the original prompt, and the workflow JSON to import and run.
+
+### Workflow Library
+
+Browse and manage saved workflows.
+
+![Workflow Library](./demo/library.png)
 
 ### 1. Sales Data Analysis Pipeline
 
@@ -15,7 +26,7 @@ A complete data analysis pipeline that generates sample sales records, validates
 
 ![Sales Data Analysis](./demo/demo_sales_1.png)
 
-- [Workflow JSON](./demo/sales-analysis.json)
+- [Workflow JSON](./demo/SalesDataAnalysisPipeline/workflow-8bc98c2b-537c-46e0-b5db-d2bf5c6a13d0.json)
 - [View Prompt](./demo/prompts.md#sales-data-analysis-pipeline)
 
 ---
@@ -27,7 +38,7 @@ A real-world disaster assessment workflow combining USGS earthquake data and NAS
 ![Earthquake Assessment 1](./demo/demo_earthquake_1.png)
 ![Earthquake Assessment 2](./demo/demo_earthquake_2.png)
 
-- [Workflow JSON](./demo/earthquake-assessment.json)
+- [Workflow JSON](./demo/EarthquakeImpactAssessment/workflow-77d62f4c-f512-409f-bf5d-be010ea310c0.json)
 - [View Prompt](./demo/prompts.md#earthquake-impact-assessment)
 
 ---
@@ -39,7 +50,7 @@ A scientific research workflow comparing publicly available KM3NeT and IceCube n
 ![Neutrino Analysis 1](./demo/demo_neutrino_1.png)
 ![Neutrino Analysis 2](./demo/demo_neutrino_2.png)
 
-- [Workflow JSON](./demo/neutrino-analysis.json)
+- [Workflow JSON](./demo/NeutrinoLorentzInvarianceStudy/workflow-0b7c316b-f86f-47bd-8661-ed391b12e774.json)
 - [View Prompt](./demo/prompts.md#neutrino-oscillations--lorentz-invariance-a-comparative-km3net-and-icecube-analysis)
 
 ---
@@ -120,10 +131,6 @@ The workflow execution request is dispatched through Hermes Desktop events. The 
 ## Compatibility
 
 Workflow Studio requires Hermes Agent `0.23.0` or newer.
-
-The plugin uses Hermes's public plugin registration APIs and Desktop Plugin SDK integration points.
-
-It does not require modifications to Hermes core source code or its built-in Desktop interface.
 
 ---
 
