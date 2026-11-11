@@ -1,0 +1,392 @@
+{
+  "id": "0b7c316b-f86f-47bd-8661-ed391b12e774",
+  "name": "Neutrino Lorentz Invariance Study (KM3NeT/ORCA6 + IceCube DR2)",
+  "createdAt": "2026-11-11T19:20:18.553Z",
+  "updatedAt": "2026-11-11T19:33:40.373Z",
+  "nodes": [
+    {
+      "type": "base",
+      "id": "ae04a44e-8174-453e-b0db-44eb800b337b",
+      "position": {
+        "x": 100,
+        "y": 250
+      },
+      "data": {
+        "general": {
+          "category": "data",
+          "description": "Downloads IceTracks-DR2 observed neutrino track events from the Harvard Dataverse and builds event-distribution summaries.",
+          "name": "fetch_icecube_events"
+        },
+        "io": {
+          "inputs": [],
+          "outputs": [
+            {
+              "name": "icecube_raw",
+              "type": "Object"
+            }
+          ]
+        },
+        "config": {
+          "parameters": [
+            {
+              "defaultValue": "4",
+              "name": "seasons_to_use",
+              "type": "Number"
+            }
+          ]
+        },
+        "execution": {
+          "pythonCode": "from __future__ import annotations\n\nimport hashlib\nimport json\nimport urllib.request\nfrom datetime import datetime, timedelta, timezone\n\n\nclass Execution:\n    name: str = \"fetch_icecube_events\"\n    description: str = \"Downloads IceTracks-DR2 observed neutrino track events from the Harvard Dataverse and builds event-distribution summaries.\"\n    category: str = \"data\"\n\n    inputs: list[dict] = []\n\n    outputs: list[dict] = [\n        {\"name\": \"icecube_raw\", \"type\": dict},\n    ]\n\n    parameters: dict = {\n        \"seasons_to_use\": {\"type\": float, \"default\": 4},\n    }\n\n    DATASET_API = \"https://dataverse.harvard.edu/api/datasets/:persistentId/?persistentId=doi:10.7910/DVN/MMIIZA\"\n    FILE_API = \"https://dataverse.harvard.edu/api/access/datafile/%d?format=original\"\n    DOI = \"10.7910/DVN/MMIIZA\"\n    SEASON_ORDER = [\"IC86_I\", \"IC86_II\", \"IC86_III\", \"IC86_IV\", \"IC86_V\", \"IC86_VI\", \"IC86_VII\", \"IC86_VIII\", \"IC86_IX\", \"IC86_X\", \"IC86_XI\"]\n    E_MIN = 1.0\n    E_MAX = 7.5\n    E_STEP = 0.25\n    Z_STEP = 10.0\n\n    def _get(self, url, timeout=240):\n        request = urllib.request.Request(url, headers={\"User-Agent\": \"hermes-workflow-neutrino-liv/1.0\"})\n        with urllib.request.urlopen(request, timeout=timeout) as response:\n            return response.read()\n\n    def _mjd_to_iso(self, mjd):\n        return (datetime(1858, 11, 17, tzinfo=timezone.utc) + timedelta(days=mjd)).isoformat()\n\n    def run(self, inputs, parameters, context):\n        seasons_to_use = max(1, int(parameters.get(\"seasons_to_use\", 4)))\n        retrieved_at = datetime.now(timezone.utc).isoformat()\n        errors: list[dict] = []\n\n        try:\n            manifest = json.loads(self._get(self.DATASET_API).decode(\"utf-8\"))\n        except Exception as exc:\n            return {\"icecube_raw\": {\"status\": \"metadata_unavailable\", \"errors\": [\"%s: %s\" % (type(exc).__name__, exc)], \"retrieved_at\": retrieved_at}}\n\n        version = manifest[\"data\"][\"latestVersion\"]\n        event_files = {}\n        for item in version.get(\"files\", []):\n            if item.get(\"directoryLabel\") != \"events\":\n                continue\n            info = item.get(\"dataFile\") or {}\n            name = str(info.get(\"filename\", \"\")).replace(\"_exp.tab\", \"\")\n            event_files[name] = info\n\n        chosen = [season for season in self.SEASON_ORDER if season in event_files][-seasons_to_use:]\n        if not chosen:\n            return {\"icecube_raw\": {\"status\": \"no_events_available\", \"errors\": [\"No event files in the Dataverse metadata.\"], \"retrieved_at\": retrieved_at}}\n\n        n_bins = int(round((self.E_MAX - self.E_MIN) / self.E_STEP))\n        energy_counts = [0] * n_bins\n        zenith_counts = [0] * int(round(180.0 / self.Z_STEP))\n        files = []\n        per_season = []\n        energies = []\n        angular = []\n        upgoing = 0\n        total = 0\n        mjd_min = None\n        mjd_max = None\n        top = []\n\n        for season in chosen:\n            info = event_files[season]\n            url = self.FILE_API % int(info.get(\"id\"))\n            try:\n                raw = self._get(url)\n            except Exception as exc:\n                errors.append({\"season\": season, \"url\": url, \"error\": \"%s: %s\" % (type(exc).__name__, exc)})\n                continue\n\n            md5 = hashlib.md5(raw).hexdigest()\n            declared = (info.get(\"checksum\") or {}).get(\"value\") or info.get(\"md5\") or \"\"\n            count = 0\n            season_energies = []\n            for line in raw.decode(\"utf-8\", \"replace\").splitlines():\n                if not line or line.startswith(\"#\"):\n                    continue\n                parts = line.split()\n                if len(parts) < 10:\n                    continue\n                try:\n                    mjd = float(parts[3])\n                    loge = float(parts[4])\n                    angerr = float(parts[5])\n                    zenith = float(parts[9])\n                except ValueError:\n                    continue\n                count += 1\n                total += 1\n                season_energies.append(loge)\n                energies.append(loge)\n                angular.append(angerr)\n                if zenith > 90.0:\n                    upgoing += 1\n                index = int((loge - self.E_MIN) / self.E_STEP)\n                if 0 <= index < n_bins:\n                    energy_counts[index] += 1\n                zindex = min(len(zenith_counts) - 1, max(0, int(zenith / self.Z_STEP)))\n                zenith_counts[zindex] += 1\n                mjd_min = mjd if mjd_min is None or mjd < mjd_min else mjd_min\n                mjd_max = mjd if mjd_max is None or mjd > mjd_max else mjd_max\n                top.append({\"log10_energy_gev\": loge, \"zenith_deg\": zenith, \"angular_error_deg\": angerr, \"mjd\": mjd, \"season\": season})\n\n            season_energies.sort()\n            per_season.append({\n                \"season\": season,\n                \"events\": count,\n                \"median_log10_energy\": round(season_energies[len(season_energies) // 2], 3) if season_energies else None,\n            })\n            files.append({\n                \"season\": season,\n                \"filename\": info.get(\"filename\"),\n                \"downloaded_bytes\": len(raw),\n                \"computed_md5\": md5,\n                \"declared_md5\": declared,\n                \"checksum_match\": bool(declared) and declared.lower() == md5.lower(),\n                \"url\": url,\n            })\n\n        if total == 0:\n            return {\"icecube_raw\": {\"status\": \"no_events_parsed\", \"files\": files, \"errors\": errors, \"retrieved_at\": retrieved_at}}\n\n        energies.sort()\n        angular.sort()\n        top.sort(key=lambda item: -item[\"log10_energy_gev\"])\n\n        def quantile(values, q):\n            if not values:\n                return None\n            index = min(len(values) - 1, max(0, int(round(q * (len(values) - 1)))))\n            return values[index]\n\n        centers = [round(self.E_MIN + (i + 0.5) * self.E_STEP, 3) for i in range(n_bins)]\n        zcenters = [round((i + 0.5) * self.Z_STEP, 1) for i in range(len(zenith_counts))]\n\n        return {\"icecube_raw\": {\n            \"status\": \"ok\",\n            \"dataset\": {\n                \"title\": \"IceCube Second Track Data Release (IceTracks-DR2, 2008-2022)\",\n                \"doi\": self.DOI,\n                \"url\": \"https://doi.org/10.7910/DVN/MMIIZA\",\n                \"version\": version.get(\"versionNumber\"),\n                \"release_time\": version.get(\"releaseTime\"),\n                \"metadata_api\": self.DATASET_API,\n            },\n            \"sample\": {\n                \"seasons\": chosen,\n                \"events\": total,\n                \"energy_bin_centers_log10_gev\": centers,\n                \"energy_counts\": energy_counts,\n                \"zenith_bin_centers_deg\": zcenters,\n                \"zenith_counts\": zenith_counts,\n                \"upgoing_fraction\": round(upgoing / total, 4),\n                \"median_log10_energy\": round(quantile(energies, 0.5), 3),\n                \"p90_log10_energy\": round(quantile(energies, 0.9), 3),\n                \"max_log10_energy\": round(energies[-1], 3),\n                \"median_angular_error_deg\": round(quantile(angular, 0.5), 3),\n                \"events_above_1pev\": sum(1 for value in energies if value > 6.0),\n                \"events_above_10pev\": sum(1 for value in energies if value > 7.0),\n                \"mjd_range\": [mjd_min, mjd_max],\n                \"utc_range\": [self._mjd_to_iso(mjd_min), self._mjd_to_iso(mjd_max)] if mjd_min is not None else None,\n                \"per_season\": per_season,\n                \"highest_energy_events\": [dict(event, utc=self._mjd_to_iso(event[\"mjd\"])) for event in top[:8]],\n            },\n            \"files\": files,\n            \"errors\": errors,\n            \"retrieved_at\": retrieved_at,\n            \"limitations\": [\n                \"Only the %d most recent seasons in the release are downloaded, not the full 14 years.\" % len(chosen),\n                \"log10(E/GeV) is the reconstructed muon energy published in the release, not a true neutrino energy.\",\n                \"Raw event counts are reported; no effective area, exposure or background model is applied at this stage.\",\n            ],\n        }}\n\n    def build_output(self, inputs, parameters, context):\n        return self.run(inputs, parameters, context)\n"
+        }
+      },
+      "selected": false,
+      "dragging": false
+    },
+    {
+      "type": "base",
+      "id": "d0c1dfc9-7e11-452e-8a9a-9692888b735a",
+      "position": {
+        "x": 100,
+        "y": 500
+      },
+      "data": {
+        "general": {
+          "category": "data",
+          "description": "Retrieves the KM3NeT/ORCA6 433 kt-y public dataset (ROOT response file, binning JSON, chi-square landscapes) with checksum verification.",
+          "name": "fetch_orca6_dataset"
+        },
+        "io": {
+          "inputs": [],
+          "outputs": [
+            {
+              "name": "orca_raw",
+              "type": "Object"
+            }
+          ]
+        },
+        "config": {
+          "parameters": [
+            {
+              "defaultValue": "120",
+              "name": "request_timeout_seconds",
+              "type": "Number"
+            }
+          ]
+        },
+        "execution": {
+          "pythonCode": "from __future__ import annotations\n\nimport hashlib\nimport json\nimport urllib.request\nfrom datetime import datetime, timezone\n\n\nclass Execution:\n    name: str = \"fetch_orca6_dataset\"\n    description: str = \"Retrieves the KM3NeT/ORCA6 433 kt-y public dataset (ROOT response file, binning JSON, chi-square landscapes) with checksum verification.\"\n    category: str = \"data\"\n\n    inputs: list[dict] = []\n\n    outputs: list[dict] = [\n        {\"name\": \"orca_raw\", \"type\": dict},\n    ]\n\n    parameters: dict = {\n        \"request_timeout_seconds\": {\"type\": float, \"default\": 120},\n    }\n\n    DATASET_API = \"https://opendata.km3net.de/api/datasets/:persistentId/?persistentId=doi:10.5072/FK2/Y0UXVW\"\n    FILE_API = \"https://opendata.km3net.de/api/access/datafile/%d\"\n    DOI = \"10.5072/FK2/Y0UXVW\"\n    DATASET_PAGE = \"https://opendata.km3net.de/dataset.xhtml?persistentId=doi:10.5072/FK2/Y0UXVW\"\n\n    def _get(self, url, timeout):\n        request = urllib.request.Request(url, headers={\"User-Agent\": \"hermes-workflow-neutrino-liv/1.0\"})\n        with urllib.request.urlopen(request, timeout=timeout) as response:\n            return response.read()\n\n    def _download(self, file_id, timeout):\n        base = self.FILE_API % int(file_id)\n        try:\n            return self._get(base + \"?format=original\", timeout), base + \"?format=original\"\n        except Exception:\n            return self._get(base, timeout), base\n\n    def _parse_chi2(self, raw):\n        rows = []\n        for line in raw.decode(\"utf-8\", \"replace\").splitlines():\n            line = line.strip()\n            if not line or line.lower().startswith(\"theta\"):\n                continue\n            parts = line.split(\",\")\n            if len(parts) < 3:\n                continue\n            try:\n                rows.append([float(parts[0]), float(parts[1]), float(parts[2])])\n            except ValueError:\n                continue\n        return rows\n\n    def run(self, inputs, parameters, context):\n        timeout = int(parameters.get(\"request_timeout_seconds\", 120))\n        retrieved_at = datetime.now(timezone.utc).isoformat()\n        errors: list[dict] = []\n\n        try:\n            manifest = json.loads(self._get(self.DATASET_API, timeout).decode(\"utf-8\"))\n        except Exception as exc:\n            return {\"orca_raw\": {\"status\": \"metadata_unavailable\", \"errors\": [\"%s: %s\" % (type(exc).__name__, exc)], \"retrieved_at\": retrieved_at}}\n\n        version = manifest[\"data\"][\"latestVersion\"]\n        files = []\n        payloads = {}\n        for item in version.get(\"files\", []):\n            info = item.get(\"dataFile\") or {}\n            name = str(info.get(\"filename\", \"\"))\n            if not name:\n                continue\n            try:\n                raw, url_used = self._download(info.get(\"id\"), timeout)\n            except Exception as exc:\n                errors.append({\"file\": name, \"error\": \"%s: %s\" % (type(exc).__name__, exc)})\n                continue\n            md5 = hashlib.md5(raw).hexdigest()\n            declared = (info.get(\"checksum\") or {}).get(\"value\") or info.get(\"md5\") or \"\"\n            payloads[name] = raw\n            files.append({\n                \"filename\": name,\n                \"downloaded_bytes\": len(raw),\n                \"declared_bytes\": info.get(\"filesize\"),\n                \"content_type\": info.get(\"contentType\"),\n                \"computed_md5\": md5,\n                \"declared_md5\": declared,\n                \"checksum_match\": bool(declared) and declared.lower() == md5.lower(),\n                \"url\": url_used,\n            })\n\n        bins = None\n        for name, raw in payloads.items():\n            if name.endswith(\".json\"):\n                try:\n                    payload = json.loads(raw.decode(\"utf-8\", \"replace\"))\n                    summary = {}\n                    for key, values in payload.items():\n                        if isinstance(values, list) and values:\n                            summary[key] = {\n                                \"bins\": max(0, len(values) - 1),\n                                \"min\": values[0],\n                                \"max\": values[-1],\n                            }\n                    bins = {\"keys\": list(payload.keys()), \"summary\": summary}\n                except Exception as exc:\n                    errors.append({\"file\": name, \"error\": \"bins JSON parse failed: %s\" % exc})\n\n        readme = None\n        for name, raw in payloads.items():\n            if name.lower().startswith(\"readme\"):\n                text = raw.decode(\"utf-8\", \"replace\")\n                readme = {\"filename\": name, \"chars\": len(text), \"excerpt\": text[:1400]}\n\n        landscapes = {}\n        for name, raw in payloads.items():\n            upper = name.upper()\n            if not name.lower().endswith(\".csv\"):\n                continue\n            if \"IO\" in upper or \"INVERTED\" in upper:\n                landscapes[\"IO\"] = self._parse_chi2(raw)\n            elif \"NO\" in upper or \"NORMAL\" in upper:\n                landscapes[\"NO\"] = self._parse_chi2(raw)\n\n        root_file = next((f for f in files if f[\"filename\"].lower().endswith(\".root\")), None)\n        status = \"ok\" if landscapes.get(\"NO\") and landscapes.get(\"IO\") else \"partial\"\n\n        return {\"orca_raw\": {\n            \"status\": status,\n            \"dataset\": {\n                \"title\": \"KM3NeT/ORCA6 433 kt-y neutrino oscillation open dataset (v%s)\" % version.get(\"versionNumber\"),\n                \"doi\": self.DOI,\n                \"url\": self.DATASET_PAGE,\n                \"release_time\": version.get(\"releaseTime\"),\n                \"metadata_api\": self.DATASET_API,\n            },\n            \"files\": files,\n            \"root_file\": root_file,\n            \"root_accessible\": bool(root_file and root_file.get(\"checksum_match\")),\n            \"root_content_note\": \"The ROOT file holds binned_data, binned_muon and binned_nu_response trees; the workflow runtime has no ROOT reader, so those trees are not decoded here.\",\n            \"binning\": bins,\n            \"readme\": readme,\n            \"chi2_landscapes\": {\n                \"NO\": {\"rows\": landscapes.get(\"NO\") or [], \"n\": len(landscapes.get(\"NO\") or [])},\n                \"IO\": {\"rows\": landscapes.get(\"IO\") or [], \"n\": len(landscapes.get(\"IO\") or [])},\n            },\n            \"errors\": errors,\n            \"retrieved_at\": retrieved_at,\n            \"limitations\": [\n                \"The two chi-square landscapes are the collaboration's published scan over theta23 and dm31; they are analysed here, not regenerated.\",\n                \"Binned detector response (ROOT) is retrieved and checksum-verified but not decoded in this runtime.\",\n            ],\n        }}\n\n    def build_output(self, inputs, parameters, context):\n        return self.run(inputs, parameters, context)\n"
+        }
+      },
+      "selected": false,
+      "dragging": false
+    },
+    {
+      "type": "base",
+      "id": "cea17819-5219-444c-9024-2d90ab6d9851",
+      "position": {
+        "x": 100,
+        "y": 750
+      },
+      "data": {
+        "general": {
+          "category": "processing",
+          "description": "Fits the IceCube track energy spectrum, quantifies up/down symmetry and tests the high-energy tail against the fitted power law.",
+          "name": "analyze_icecube_distribution"
+        },
+        "io": {
+          "inputs": [
+            {
+              "name": "icecube_raw",
+              "type": "Object"
+            }
+          ],
+          "outputs": [
+            {
+              "name": "icecube_analysis",
+              "type": "Object"
+            }
+          ]
+        },
+        "config": {
+          "parameters": [
+            {
+              "defaultValue": "2",
+              "name": "fit_min_log10_energy",
+              "type": "Number"
+            },
+            {
+              "defaultValue": "6.5",
+              "name": "fit_max_log10_energy",
+              "type": "Number"
+            }
+          ]
+        },
+        "execution": {
+          "pythonCode": "from __future__ import annotations\n\nimport json\nimport math\n\n\nclass Execution:\n    name: str = \"analyze_icecube_distribution\"\n    description: str = \"Characterises the IceCube track sample: energy and zenith distributions, angular resolution and a documented single power-law probe.\"\n    category: str = \"processing\"\n\n    inputs: list[dict] = [\n        {\"name\": \"icecube_raw\", \"type\": dict},\n    ]\n\n    outputs: list[dict] = [\n        {\"name\": \"icecube_analysis\", \"type\": dict},\n    ]\n\n    parameters: dict = {\n        \"fit_min_log10_energy\": {\"type\": float, \"default\": 5.0},\n        \"fit_max_log10_energy\": {\"type\": float, \"default\": 6.75},\n    }\n\n    def _unwrap(self, inputs, key):\n        value = inputs.get(key)\n        if isinstance(value, str) and value.strip()[:1] == \"{\":\n            try:\n                value = json.loads(value)\n            except Exception:\n                return {}\n        if isinstance(value, dict) and key in value and isinstance(value[key], dict):\n            return value[key]\n        return value if isinstance(value, dict) else {}\n\n    def _probe(self, centers, counts, x_min, x_max):\n        xs, ys, ws = [], [], []\n        for x, n in zip(centers, counts):\n            if n < 20 or x < x_min or x > x_max:\n                continue\n            xs.append(x)\n            ys.append(math.log10(n))\n            ws.append(float(n))\n        if len(xs) < 4:\n            return None\n        sw = sum(ws)\n        mx = sum(w * x for w, x in zip(ws, xs)) / sw\n        my = sum(w * y for w, y in zip(ws, ys)) / sw\n        sxx = sum(w * (x - mx) ** 2 for w, x in zip(ws, xs))\n        sxy = sum(w * (x - mx) * (y - my) for w, x, y in zip(ws, xs, ys))\n        if sxx <= 0:\n            return None\n        slope = sxy / sxx\n        intercept = my - slope * mx\n        chi2 = sum(w * (y - (intercept + slope * x)) ** 2 for w, x, y in zip(ws, xs, ys))\n        dof = max(1, len(xs) - 2)\n        slope_err = math.sqrt(max(chi2 / dof, 1.0) / sxx)\n        return {\"slope\": slope, \"slope_error\": slope_err, \"chi2\": chi2, \"dof\": dof, \"n_bins\": len(xs), \"range\": [xs[0], xs[-1]]}\n\n    def run(self, inputs, parameters, context):\n        raw = self._unwrap(inputs, \"icecube_raw\")\n        x_min = float(parameters.get(\"fit_min_log10_energy\", 5.0))\n        x_max = float(parameters.get(\"fit_max_log10_energy\", 6.75))\n\n        sample = raw.get(\"sample\") or {}\n        if not sample.get(\"energy_counts\"):\n            return {\"icecube_analysis\": {\"status\": \"no_input\", \"message\": \"IceCube event summary is missing or empty.\"}}\n\n        centers = sample[\"energy_bin_centers_log10_gev\"]\n        counts = sample[\"energy_counts\"]\n        total = int(sample.get(\"events\") or sum(counts))\n\n        decades = {}\n        for x, n in zip(centers, counts):\n            key = int(math.floor(x))\n            decades[key] = decades.get(key, 0) + n\n\n        probe = self._probe(centers, counts, x_min, x_max)\n        probe_block = None\n        if probe:\n            adequate = (probe[\"chi2\"] / probe[\"dof\"]) <= 3.0\n            probe_block = {\n                \"model\": \"counts per 0.25 dex fitted as log10(N) = a + b log10(E/GeV); for dN/dE ~ E^-gamma, gamma = 1 - b\",\n                \"fit_range_log10_gev\": probe[\"range\"],\n                \"bins_used\": probe[\"n_bins\"],\n                \"slope_per_dex\": round(probe[\"slope\"], 3),\n                \"slope_error\": round(probe[\"slope_error\"], 3),\n                \"gamma\": round(1.0 - probe[\"slope\"], 3),\n                \"gamma_error\": round(probe[\"slope_error\"], 3),\n                \"chi2\": round(probe[\"chi2\"], 1),\n                \"dof\": probe[\"dof\"],\n                \"chi2_per_dof\": round(probe[\"chi2\"] / probe[\"dof\"], 1),\n                \"adequate_description\": adequate,\n                \"note\": \"A single power law is inadequate when chi2/dof is large; gamma then only documents that failure and no spectral conclusion is drawn.\",\n            }\n\n        upgoing = float(sample.get(\"upgoing_fraction\") or 0.0)\n        n_up = upgoing * total\n        n_down = total - n_up\n        ratio = n_up / n_down if n_down else None\n        ratio_err = ratio * math.sqrt(1.0 / max(n_up, 1.0) + 1.0 / max(n_down, 1.0)) if ratio else None\n\n        return {\"icecube_analysis\": {\n            \"status\": \"ok\" if raw.get(\"status\") == \"ok\" else \"partial_input\",\n            \"dataset\": raw.get(\"dataset\"),\n            \"sample_size\": total,\n            \"seasons\": sample.get(\"seasons\"),\n            \"observation_window_utc\": sample.get(\"utc_range\"),\n            \"energy\": {\n                \"median_log10_gev\": sample.get(\"median_log10_energy\"),\n                \"p90_log10_gev\": sample.get(\"p90_log10_energy\"),\n                \"max_log10_gev\": sample.get(\"max_log10_energy\"),\n                \"max_energy_gev\": round(10 ** float(sample.get(\"max_log10_energy\") or 0), 1),\n                \"counts_per_decade\": {str(k): v for k, v in sorted(decades.items())},\n                \"events_above_1pev\": sample.get(\"events_above_1pev\"),\n                \"events_above_10pev\": sample.get(\"events_above_10pev\"),\n                \"mode_decade_log10_gev\": max(decades, key=decades.get) if decades else None,\n            },\n            \"angular\": {\n                \"median_error_deg\": sample.get(\"median_angular_error_deg\"),\n                \"note\": \"Angular error is the per-event reconstruction uncertainty published in the release.\",\n            },\n            \"zenith\": {\n                \"convention\": \"IceCube local zenith; this release satisfies Dec = zenith - 90 deg, so zenith > 90 deg is up-going (Earth-crossing, northern sky).\",\n                \"upgoing_fraction\": upgoing,\n                \"upgoing_events\": int(round(n_up)),\n                \"downgoing_events\": int(round(n_down)),\n                \"up_down_ratio\": round(ratio, 4) if ratio else None,\n                \"up_down_ratio_error\": round(ratio_err, 4) if ratio_err else None,\n                \"note\": \"The horizon ratio is not expected to be unity: effective area, trigger conditions and Earth attenuation break the symmetry.\",\n            },\n            \"power_law_probe\": probe_block,\n            \"highest_energy_events\": sample.get(\"highest_energy_events\"),\n            \"histograms\": {\n                \"energy\": {\"centers_log10_gev\": centers, \"counts\": counts},\n                \"zenith\": {\"centers_deg\": sample.get(\"zenith_bin_centers_deg\"), \"counts\": sample.get(\"zenith_counts\")},\n            },\n            \"files\": raw.get(\"files\"),\n            \"retrieval_errors\": raw.get(\"errors\") or [],\n            \"retrieved_at\": raw.get(\"retrieved_at\"),\n            \"liv_fit_performed\": False,\n            \"liv_note\": \"No LIV coefficient is fitted or constrained at this stage.\",\n            \"limitations\": list(raw.get(\"limitations\") or []) + [\n                \"Counts mix atmospheric and astrophysical neutrinos; no purity separation or unfolding is applied.\",\n                \"Reconstructed muon energy is not the neutrino energy; interpreting the shape requires the detector response.\",\n            ],\n        }}\n\n    def build_output(self, inputs, parameters, context):\n        return self.run(inputs, parameters, context)\n"
+        }
+      },
+      "selected": false,
+      "dragging": false
+    },
+    {
+      "type": "base",
+      "id": "7d3ff5e4-e7be-4d81-bf4d-e4db5c818759",
+      "position": {
+        "x": 100,
+        "y": 1000
+      },
+      "data": {
+        "general": {
+          "category": "processing",
+          "description": "Profiles the ORCA6 chi-square landscapes to extract best-fit theta23 and dm31, their intervals and the mass-ordering preference.",
+          "name": "analyze_orca_oscillations"
+        },
+        "io": {
+          "inputs": [
+            {
+              "name": "orca_raw",
+              "type": "Object"
+            }
+          ],
+          "outputs": [
+            {
+              "name": "orca_analysis",
+              "type": "Object"
+            }
+          ]
+        },
+        "config": {
+          "parameters": [
+            {
+              "defaultValue": "1",
+              "name": "one_sigma_dchi2",
+              "type": "Number"
+            },
+            {
+              "defaultValue": "2.71",
+              "name": "ninety_percent_dchi2",
+              "type": "Number"
+            }
+          ]
+        },
+        "execution": {
+          "pythonCode": "from __future__ import annotations\n\nimport json\nimport math\n\n\nclass Execution:\n    name: str = \"analyze_orca_oscillations\"\n    description: str = \"Profiles the ORCA6 chi-square landscapes to extract best-fit theta23 and dm31, their intervals and the mass-ordering preference.\"\n    category: str = \"processing\"\n\n    inputs: list[dict] = [\n        {\"name\": \"orca_raw\", \"type\": dict},\n    ]\n\n    outputs: list[dict] = [\n        {\"name\": \"orca_analysis\", \"type\": dict},\n    ]\n\n    parameters: dict = {\n        \"one_sigma_dchi2\": {\"type\": float, \"default\": 1.0},\n        \"ninety_percent_dchi2\": {\"type\": float, \"default\": 2.71},\n    }\n\n    def _unwrap(self, inputs, key):\n        value = inputs.get(key)\n        if isinstance(value, str) and value.strip()[:1] == \"{\":\n            try:\n                value = json.loads(value)\n            except Exception:\n                return {}\n        if isinstance(value, dict) and key in value and isinstance(value[key], dict):\n            return value[key]\n        return value if isinstance(value, dict) else {}\n\n    def _profile(self, rows, index):\n        profile = {}\n        for row in rows:\n            key = row[index]\n            if key not in profile or row[2] < profile[key]:\n                profile[key] = row[2]\n        return profile\n\n    def _interval(self, profile, best_key, base, threshold):\n        keys = sorted(profile)\n        try:\n            start = keys.index(best_key)\n        except ValueError:\n            return None\n        low = keys[start]\n        index = start\n        while index - 1 >= 0 and (profile[keys[index - 1]] - base) <= threshold:\n            index -= 1\n            low = keys[index]\n        if index > 0:\n            x1, y1 = keys[index - 1], profile[keys[index - 1]] - base\n            x2, y2 = keys[index], profile[keys[index]] - base\n            if y1 != y2:\n                low = x1 + (threshold - y1) * (x2 - x1) / (y2 - y1)\n        high = keys[start]\n        index = start\n        while index + 1 < len(keys) and (profile[keys[index + 1]] - base) <= threshold:\n            index += 1\n            high = keys[index]\n        if index < len(keys) - 1:\n            x1, y1 = keys[index], profile[keys[index]] - base\n            x2, y2 = keys[index + 1], profile[keys[index + 1]] - base\n            if y1 != y2:\n                high = x1 + (threshold - y1) * (x2 - x1) / (y2 - y1)\n        return [round(low, 4), round(high, 4)]\n\n    def _ordering_block(self, rows, sigma1, sigma90):\n        if not rows:\n            return None\n        best = min(rows, key=lambda row: row[2])\n        base = best[2]\n        theta_profile = self._profile(rows, 0)\n        dm_profile = self._profile(rows, 1)\n        theta_counts = {}\n        for row in rows:\n            theta_counts[row[0]] = theta_counts.get(row[0], 0) + 1\n        modal_theta = max(theta_counts.values()) if theta_counts else 0\n        sparse = [row for row in rows if theta_counts.get(row[0], 0) < 0.8 * modal_theta]\n        return {\n            \"best_fit\": {\n                \"theta23_deg\": round(best[0], 4),\n                \"sin2_theta23\": round(math.sin(math.radians(best[0])) ** 2, 4),\n                \"dm31_ev2\": best[1],\n                \"abs_dm31_ev2\": abs(best[1]),\n                \"chi2\": round(best[2], 3),\n            },\n            \"theta23_1sigma\": self._interval(theta_profile, best[0], base, sigma1),\n            \"theta23_90pct\": self._interval(theta_profile, best[0], base, sigma90),\n            \"dm31_1sigma\": self._interval(dm_profile, best[1], base, sigma1),\n            \"dm31_90pct\": self._interval(dm_profile, best[1], base, sigma90),\n            \"theta23_profile\": [{\"theta23_deg\": key, \"delta_chi2\": round(value - base, 3)} for key, value in sorted(theta_profile.items())],\n            \"dm31_profile\": [{\"dm31_ev2\": key, \"delta_chi2\": round(value - base, 3)} for key, value in sorted(dm_profile.items())],\n            \"rows_used\": len(rows),\n            \"theta23_values\": len(theta_profile),\n            \"dm31_values\": len(dm_profile),\n            \"refinement_rows_included\": len(sparse),\n        }\n\n    def run(self, inputs, parameters, context):\n        raw = self._unwrap(inputs, \"orca_raw\")\n        sigma1 = float(parameters.get(\"one_sigma_dchi2\", 1.0))\n        sigma90 = float(parameters.get(\"ninety_percent_dchi2\", 2.71))\n\n        landscapes = raw.get(\"chi2_landscapes\") or {}\n        no_rows = (landscapes.get(\"NO\") or {}).get(\"rows\") or []\n        io_rows = (landscapes.get(\"IO\") or {}).get(\"rows\") or []\n        if not no_rows or not io_rows:\n            return {\"orca_analysis\": {\"status\": \"no_input\", \"message\": \"One or both chi-square landscapes are missing.\"}}\n\n        no_block = self._ordering_block(no_rows, sigma1, sigma90)\n        io_block = self._ordering_block(io_rows, sigma1, sigma90)\n\n        delta = io_block[\"best_fit\"][\"chi2\"] - no_block[\"best_fit\"][\"chi2\"]\n        significance = math.sqrt(abs(delta))\n        preferred = \"NO\" if delta > 0 else \"IO\"\n\n        return {\"orca_analysis\": {\n            \"status\": \"ok\" if raw.get(\"status\") == \"ok\" else \"partial_input\",\n            \"dataset\": raw.get(\"dataset\"),\n            \"binning\": raw.get(\"binning\"),\n            \"files\": raw.get(\"files\"),\n            \"checksums_all_match\": all(bool(f.get(\"checksum_match\")) for f in (raw.get(\"files\") or [])),\n            \"root_accessible\": raw.get(\"root_accessible\"),\n            \"root_content_note\": raw.get(\"root_content_note\"),\n            \"readme_excerpt\": (raw.get(\"readme\") or {}).get(\"excerpt\"),\n            \"mass_ordering\": {\n                \"normal\": no_block,\n                \"inverted\": io_block,\n                \"delta_chi2_no_minus_io\": round(-delta, 3),\n                \"delta_chi2_definition\": \"chi2_min(IO) - chi2_min(NO); collective rows are included in each minimum\",\n                \"preferred_ordering\": preferred,\n                \"significance_sigma_1dof\": round(significance, 3),\n                \"note\": \"sqrt(|delta chi2|) is an approximate one-degree-of-freedom significance for the ordering comparison.\",\n            },\n            \"theta23_deg_consistency\": {\n                \"normal\": no_block[\"best_fit\"][\"theta23_deg\"],\n                \"inverted\": io_block[\"best_fit\"][\"theta23_deg\"],\n                \"difference_deg\": round(abs(io_block[\"best_fit\"][\"theta23_deg\"] - no_block[\"best_fit\"][\"theta23_deg\"]), 4),\n            },\n            \"abs_dm31_consistency\": {\n                \"normal_ev2\": no_block[\"best_fit\"][\"abs_dm31_ev2\"],\n                \"inverted_ev2\": io_block[\"best_fit\"][\"abs_dm31_ev2\"],\n                \"relative_difference\": round(abs(io_block[\"best_fit\"][\"abs_dm31_ev2\"] - no_block[\"best_fit\"][\"abs_dm31_ev2\"]) / max(no_block[\"best_fit\"][\"abs_dm31_ev2\"], io_block[\"best_fit\"][\"abs_dm31_ev2\"]), 4),\n            },\n            \"errors\": raw.get(\"errors\") or [],\n            \"retrieved_at\": raw.get(\"retrieved_at\"),\n            \"limitations\": list(raw.get(\"limitations\") or []) + [\n                \"Intervals are read off the published two-parameter scan with one-parameter thresholds; they are not a full profile-likelihood construction.\",\n                \"The scan covers theta23 and dm31 only; the remaining oscillation parameters are fixed by the collaboration.\",\n            ],\n        }}\n\n    def build_output(self, inputs, parameters, context):\n        return self.run(inputs, parameters, context)\n"
+        }
+      },
+      "selected": false,
+      "dragging": false
+    },
+    {
+      "type": "base",
+      "id": "4d8bbb17-9d04-4800-95ce-05b9e8212d30",
+      "position": {
+        "x": 100,
+        "y": 1250
+      },
+      "data": {
+        "general": {
+          "category": "processing",
+          "description": "Compares ORCA6 and IceCube results with standard expectations and published LIV limits, and renders SVG figures.",
+          "name": "compare_and_visualize"
+        },
+        "io": {
+          "inputs": [
+            {
+              "name": "icecube_analysis",
+              "type": "Object"
+            },
+            {
+              "name": "icecube_raw",
+              "type": "Object"
+            },
+            {
+              "name": "orca_analysis",
+              "type": "Object"
+            },
+            {
+              "name": "orca_raw",
+              "type": "Object"
+            }
+          ],
+          "outputs": [
+            {
+              "name": "comparison",
+              "type": "Object"
+            },
+            {
+              "name": "figures",
+              "type": "Object"
+            }
+          ]
+        },
+        "config": {
+          "parameters": [
+            {
+              "defaultValue": "1.22",
+              "name": "planck_energy_e19_gev",
+              "type": "Number"
+            }
+          ]
+        },
+        "execution": {
+          "pythonCode": "from __future__ import annotations\n\nimport json\n\n\nclass Execution:\n    name: str = 'compare_and_visualize'\n    description: str = 'Compares ORCA6 and IceCube results with standard expectations and published LIV limits, and renders SVG figures.'\n    category: str = 'processing'\n\n    inputs: list[dict] = [\n        {'name': 'icecube_analysis', 'type': dict},\n        {'name': 'icecube_raw', 'type': dict},\n        {'name': 'orca_analysis', 'type': dict},\n        {'name': 'orca_raw', 'type': dict},\n    ]\n\n    outputs: list[dict] = [\n        {'name': 'comparison', 'type': dict},\n        {'name': 'figures', 'type': dict},\n    ]\n\n    parameters: dict = {\n        'planck_energy_e19_gev': {'type': float, 'default': 1.22},\n    }\n\n    WIDTH = 640\n    HEIGHT = 390\n    LEFT = 82\n    RIGHT = 24\n    TOP = 48\n    BOTTOM = 62\n    NO_COLOUR = '#2563eb'\n    IO_COLOUR = '#f59e0b'\n\n    def _unwrap(self, inputs, key):\n        value = inputs.get(key)\n        if isinstance(value, str) and value.strip()[:1] == '{':\n            try:\n                value = json.loads(value)\n            except Exception:\n                return {}\n        if isinstance(value, dict) and key in value and isinstance(value[key], dict):\n            return value[key]\n        return value if isinstance(value, dict) else {}\n\n    def _head(self, title, xlabel, ylabel):\n        plot_w = self.WIDTH - self.LEFT - self.RIGHT\n        plot_h = self.HEIGHT - self.TOP - self.BOTTOM\n        parts = ['<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 %d %d\" width=\"%d\" height=\"%d\" font-family=\"Helvetica, Arial, sans-serif\">' % (self.WIDTH, self.HEIGHT, self.WIDTH, self.HEIGHT)]\n        parts.append('<rect width=\"100%\" height=\"100%\" fill=\"#ffffff\"/>')\n        parts.append('<text x=\"%d\" y=\"26\" font-size=\"15\" font-weight=\"600\" fill=\"#111827\">%s</text>' % (self.LEFT, title))\n        parts.append('<rect x=\"%d\" y=\"%d\" width=\"%d\" height=\"%d\" fill=\"none\" stroke=\"#9ca3af\"/>' % (self.LEFT, self.TOP, plot_w, plot_h))\n        parts.append('<text x=\"%.1f\" y=\"%d\" font-size=\"12\" fill=\"#374151\" text-anchor=\"middle\">%s</text>' % (self.LEFT + plot_w / 2.0, self.HEIGHT - 16, xlabel))\n        mid = self.TOP + plot_h / 2.0\n        parts.append('<text x=\"18\" y=\"%.1f\" font-size=\"12\" fill=\"#374151\" text-anchor=\"middle\" transform=\"rotate(-90 18 %.1f)\">%s</text>' % (mid, mid, ylabel))\n        return parts\n\n    def _axes(self, parts, x_ticks, y_ticks):\n        plot_w = self.WIDTH - self.LEFT - self.RIGHT\n        plot_h = self.HEIGHT - self.TOP - self.BOTTOM\n        for frac, label in x_ticks:\n            x = self.LEFT + frac * plot_w\n            parts.append('<line x1=\"%.1f\" y1=\"%d\" x2=\"%.1f\" y2=\"%d\" stroke=\"#e5e7eb\"/>' % (x, self.TOP, x, self.TOP + plot_h))\n            parts.append('<text x=\"%.1f\" y=\"%d\" font-size=\"11\" fill=\"#4b5563\" text-anchor=\"middle\">%s</text>' % (x, self.TOP + plot_h + 16, label))\n        for frac, label in y_ticks:\n            y = self.TOP + plot_h - frac * plot_h\n            parts.append('<line x1=\"%d\" y1=\"%.1f\" x2=\"%d\" y2=\"%.1f\" stroke=\"#e5e7eb\"/>' % (self.LEFT, y, self.LEFT + plot_w, y))\n            parts.append('<text x=\"%d\" y=\"%.1f\" font-size=\"11\" fill=\"#4b5563\" text-anchor=\"end\">%s</text>' % (self.LEFT - 8, y + 4, label))\n        return parts\n\n    def _bar_chart(self, title, xlabel, ylabel, x_values, values, x_min, x_max, y_max, colour, x_ticks, y_ticks):\n        parts = self._head(title, xlabel, ylabel)\n        parts = self._axes(parts, x_ticks, y_ticks)\n        plot_w = self.WIDTH - self.LEFT - self.RIGHT\n        plot_h = self.HEIGHT - self.TOP - self.BOTTOM\n        span = (x_max - x_min) or 1.0\n        slot = plot_w / float(len(values) or 1) * 0.76\n        for x_value, value in zip(x_values, values):\n            height = (value / y_max) * plot_h if y_max else 0.0\n            x = self.LEFT + ((x_value - x_min) / span) * plot_w - slot / 2.0\n            parts.append('<rect x=\"%.1f\" y=\"%.1f\" width=\"%.1f\" height=\"%.1f\" fill=\"%s\" fill-opacity=\"0.85\"/>' % (x, self.TOP + plot_h - height, slot, height, colour))\n        parts.append('</svg>')\n        return ''.join(parts)\n\n    def _line_chart(self, title, xlabel, ylabel, series, x_min, x_max, y_max, x_ticks, y_ticks, thresholds):\n        parts = self._head(title, xlabel, ylabel)\n        parts = self._axes(parts, x_ticks, y_ticks)\n        plot_w = self.WIDTH - self.LEFT - self.RIGHT\n        plot_h = self.HEIGHT - self.TOP - self.BOTTOM\n        span = (x_max - x_min) or 1.0\n        for threshold in thresholds:\n            if threshold <= y_max:\n                y = self.TOP + plot_h - (threshold / y_max) * plot_h\n                parts.append('<line x1=\"%d\" y1=\"%.1f\" x2=\"%d\" y2=\"%.1f\" stroke=\"#ef4444\" stroke-dasharray=\"4 4\"/>' % (self.LEFT, y, self.LEFT + plot_w, y))\n        for entry in series:\n            points = entry[0]\n            colour = entry[1]\n            coords = []\n            for x, y in points:\n                px = self.LEFT + ((x - x_min) / span) * plot_w\n                py = self.TOP + plot_h - (min(y, y_max) / y_max) * plot_h\n                coords.append('%.1f,%.1f' % (px, py))\n            if coords:\n                parts.append('<polyline fill=\"none\" stroke=\"%s\" stroke-width=\"2\" points=\"%s\"/>' % (colour, ' '.join(coords)))\n        parts.append('</svg>')\n        return ''.join(parts)\n\n    def run(self, inputs, parameters, context):\n        ice = self._unwrap(inputs, 'icecube_analysis')\n        ice_raw = self._unwrap(inputs, 'icecube_raw')\n        orca = self._unwrap(inputs, 'orca_analysis')\n        orca_raw = self._unwrap(inputs, 'orca_raw')\n        planck = float(parameters.get('planck_energy_e19_gev', 1.22)) * 1e19\n\n        if not ice or not orca:\n            return {'comparison': {'status': 'no_input', 'message': 'Both branch analyses are required.'}, 'figures': {}}\n\n        energy = ice.get('energy') or {}\n        zenith = ice.get('zenith') or {}\n        probe = ice.get('power_law_probe') or {}\n        ordering = orca.get('mass_ordering') or {}\n        no_block = ordering.get('normal') or {}\n        io_block = ordering.get('inverted') or {}\n        no_best = no_block.get('best_fit') or {}\n        io_best = io_block.get('best_fit') or {}\n\n        checks = []\n        if probe:\n            checks.append({\n                'name': 'IceCube single power-law description',\n                'measured': 'chi2/dof = %.1f over 10^%.2f-10^%.2f GeV (gamma = %.2f +- %.2f)' % (\n                    probe.get('chi2_per_dof') or 0, (probe.get('fit_range_log10_gev') or [0, 0])[0],\n                    (probe.get('fit_range_log10_gev') or [0, 0])[1], probe.get('gamma') or 0, probe.get('gamma_error') or 0),\n                'reference': 'chi2/dof of order 1 for an adequate model',\n                'sigma': None,\n                'verdict': 'adequate' if probe.get('adequate_description') else 'inadequate - descriptive only',\n            })\n        if zenith.get('up_down_ratio') is not None:\n            checks.append({\n                'name': 'IceCube up/down event ratio',\n                'measured': 'U/D = %.3f +- %.3f' % (zenith['up_down_ratio'], zenith.get('up_down_ratio_error') or 0),\n                'reference': '1.0 (horizon-symmetry reference, not a physical prediction)',\n                'sigma': None,\n                'verdict': 'asymmetric as expected from effective area and Earth attenuation',\n            })\n        checks.append({\n            'name': 'ORCA6 mass ordering preference',\n            'measured': '%s preferred, delta chi2 = %.3f' % (ordering.get('preferred_ordering'), abs(ordering.get('delta_chi2_no_minus_io') or 0)),\n            'reference': 'delta chi2 = 0 (no sensitivity)',\n            'sigma': ordering.get('significance_sigma_1dof'),\n            'verdict': 'no significant preference' if (ordering.get('significance_sigma_1dof') or 0) < 3 else 'preference reported',\n        })\n        interval = no_block.get('theta23_1sigma') or []\n        if len(interval) == 2:\n            inside = interval[0] <= 45.0 <= interval[1]\n            checks.append({\n                'name': 'ORCA6 theta23 vs maximal mixing',\n                'measured': '%.3f deg (1 sigma %.3f-%.3f)' % (no_best.get('theta23_deg', 0), interval[0], interval[1]),\n                'reference': '45 deg (maximal mixing)',\n                'sigma': None,\n                'verdict': 'maximal mixing allowed' if inside else 'maximal mixing outside 1 sigma',\n            })\n\n        max_energy = float(energy.get('max_energy_gev') or 0)\n        literature = [\n            {'source': 'KM3NeT/ORCA6 atmospheric LIV search (arXiv:2603.04264)', 'quantity': '95% CL limits on isotropic flavour-off-diagonal SME coefficients (units 1e-23 GeV)', 'value': 'a_mu_tau < 0.48, a_e_mu < 2.53, a_e_tau < 4.70', 'url': 'https://arxiv.org/abs/2603.04264'},\n            {'source': 'KM3-230213A ultra-high-energy event (arXiv:2502.18256)', 'quantity': 'second-order LIV scale at 90% CL', 'value': 'Lambda_2 > 5.0e19 GeV for E_nu ~ 220 PeV', 'url': 'https://arxiv.org/abs/2502.18256'},\n            {'source': 'Stecker & Scully (arXiv:1404.7025)', 'quantity': 'superluminal velocity parameters from IceCube PeV neutrinos', 'value': 'delta_nu_e <= 5.2e-21; delta_nu <= 1.0e-20', 'url': 'https://arxiv.org/abs/1404.7025'},\n            {'source': 'Borriello et al. (arXiv:1303.5843)', 'quantity': 'LIV parameter from two IceCube PeV events', 'value': 'delta < O(1e-18); M_QG >~ 1e-4 M_Pl linear, ~1e5 M_Pl quadratic', 'url': 'https://arxiv.org/abs/1303.5843'},\n        ]\n\n        scale = {\n            'highest_energy_in_sample_gev': max_energy,\n            'km3_230213a_energy_gev': 2.2e8,\n            'ratio_sample_to_km3_230213a': round(max_energy / 2.2e8, 4) if max_energy else None,\n            'planck_energy_gev': planck,\n            'note': 'The IceCube sample analysed here is a track sample whose energies lie orders of magnitude below the single 220 PeV event used in the KM3NeT second-order LIV bound.',\n        }\n\n        comparison = {\n            'status': 'ok',\n            'orca6': {\n                'best_fit_normal': no_best,\n                'best_fit_inverted': io_best,\n                'ordering_delta_chi2': ordering.get('delta_chi2_no_minus_io'),\n                'ordering_significance_sigma': ordering.get('significance_sigma_1dof'),\n                'preferred_ordering': ordering.get('preferred_ordering'),\n                'theta23_1sigma': no_block.get('theta23_1sigma'),\n                'theta23_90pct': no_block.get('theta23_90pct'),\n                'dm31_1sigma': no_block.get('dm31_1sigma'),\n                'dm31_90pct': no_block.get('dm31_90pct'),\n                'dataset_doi': (orca.get('dataset') or {}).get('doi'),\n                'checksums_all_match': orca.get('checksums_all_match'),\n                'analysis_window': (orca.get('binning') or {}).get('summary'),\n            },\n            'icecube': {\n                'sample_size': ice.get('sample_size'),\n                'seasons': ice.get('seasons'),\n                'spectral_index': probe.get('gamma'),\n                'spectral_index_error': probe.get('gamma_error'),\n                'chi2_per_dof': probe.get('chi2_per_dof'),\n                'power_law_adequate': probe.get('adequate_description'),\n                'up_down_ratio': zenith.get('up_down_ratio'),\n                'up_down_error': zenith.get('up_down_ratio_error'),\n                'upgoing_fraction': zenith.get('upgoing_fraction'),\n                'max_energy_gev': max_energy,\n                'events_above_1pev': energy.get('events_above_1pev'),\n                'events_above_10pev': energy.get('events_above_10pev'),\n                'counts_per_decade': energy.get('counts_per_decade'),\n                'dataset_doi': (ice.get('dataset') or {}).get('doi'),\n            },\n            'consistency_checks': checks,\n            'literature_constraints': literature,\n            'energy_scale_comparison': scale,\n            'interpretation': 'Independent analysis of two public datasets. The ORCA6 branch re-extracts the published oscillation scan and confirms a best fit with no strong mass-ordering preference. The IceCube branch characterises the released track sample: its reconstructed-energy distribution is not described by a single power law, so no spectral index or LIV limit is claimed from it. Neither branch derives a new LIV coefficient, and no joint likelihood is formed.',\n            'limitations': list(ice.get('limitations') or []) + list(orca.get('limitations') or []) + [\n                'The comparison with published LIV limits is a literature cross-reference, not an independent limit calculation.',\n                'No shared likelihood or joint fit between ORCA6 and IceCube is performed.',\n            ],\n            'retrieved_at': orca.get('retrieved_at'),\n        }\n\n        figures = self._figures(ice_raw, no_block, io_block)\n        return {'comparison': comparison, 'figures': figures}\n\n    def _figures(self, ice_raw, no_block, io_block):\n        sample = ice_raw.get('sample') or {}\n        counts = sample.get('energy_counts') or []\n        centers = sample.get('energy_bin_centers_log10_gev') or []\n        zcounts = sample.get('zenith_counts') or []\n        zcenters = sample.get('zenith_bin_centers_deg') or []\n        outputs = {}\n\n        if counts and centers:\n            top = max(counts) or 1\n            x0, x1 = min(centers), max(centers)\n            x_ticks = [((k - x0) / (x1 - x0), '10^%d' % k) for k in range(1, 8) if x0 <= k <= x1]\n            y_ticks = [(f, '%d' % round(f * top)) for f in (0.0, 0.25, 0.5, 0.75, 1.0)]\n            outputs['energy_spectrum'] = {\n                'svg': self._bar_chart('IceCube track events: reconstructed energy', 'reconstructed energy E [GeV]', 'events per 0.25 dex', centers, counts, x0, x1, top * 1.05, self.NO_COLOUR, x_ticks, y_ticks),\n                'caption': 'Raw event counts per 0.25 dex in reconstructed energy for the %d-event sample. No detector response is unfolded.' % int(sample.get('events') or 0),\n            }\n\n        if zcounts and zcenters:\n            top = max(zcounts) or 1\n            x_ticks = [(t / 180.0, str(t)) for t in (0, 45, 90, 135, 180)]\n            y_ticks = [(f, '%d' % round(f * top)) for f in (0.0, 0.5, 1.0)]\n            outputs['zenith_distribution'] = {\n                'svg': self._bar_chart('IceCube track events: zenith angle', 'reconstructed zenith [deg]', 'events per 10 deg', zcenters, zcounts, 0.0, 180.0, top * 1.05, '#0ea5e9', x_ticks, y_ticks),\n                'caption': 'Zenith distribution of the same sample; 90 deg marks the horizon, above which events are up-going (Earth-crossing).',\n            }\n\n        theta_series = []\n        for block, colour in ((no_block, self.NO_COLOUR), (io_block, self.IO_COLOUR)):\n            points = [(row['theta23_deg'], row['delta_chi2']) for row in (block.get('theta23_profile') or [])]\n            if points:\n                theta_series.append((points, colour))\n        if theta_series:\n            xs = [point[0] for entry in theta_series for point in entry[0]]\n            ys = [point[1] for entry in theta_series for point in entry[0]]\n            x_min, x_max = min(xs), max(xs)\n            y_max = min(20.0, max(5.0, max(ys) * 1.1))\n            x_ticks = [((t - x_min) / (x_max - x_min), str(t)) for t in (35, 40, 45, 50, 55) if x_min <= t <= x_max]\n            outputs['orca_theta23'] = {\n                'svg': self._line_chart('ORCA6 scan: theta23 profile', 'theta23 [deg]', 'delta chi2', theta_series, x_min, x_max, y_max, x_ticks, [(0.0, '0'), (0.5, '%.1f' % (y_max / 2)), (1.0, '%.0f' % y_max)], [1.0, 2.71]),\n                'caption': 'Profiled delta chi-square versus theta23 for normal (blue) and inverted (orange) ordering. Dashed lines mark delta chi2 = 1 and 2.71.',\n            }\n\n        dm_series = []\n        for block, colour in ((no_block, self.NO_COLOUR), (io_block, self.IO_COLOUR)):\n            points = []\n            for row in (block.get('dm31_profile') or []):\n                points.append((abs(row['dm31_ev2']) * 1e3, row['delta_chi2']))\n            points.sort()\n            if points:\n                dm_series.append((points, colour))\n        if dm_series:\n            xs = [point[0] for entry in dm_series for point in entry[0]]\n            ys = [point[1] for entry in dm_series for point in entry[0]]\n            x_min, x_max = min(xs), max(xs)\n            y_max = min(20.0, max(5.0, max(ys) * 1.1))\n            x_ticks = [((t - x_min) / (x_max - x_min), '%.1f' % t) for t in (1.0, 2.0, 3.0, 4.0) if x_min <= t <= x_max]\n            outputs['orca_dm31'] = {\n                'svg': self._line_chart('ORCA6 scan: |dm31| profile', '|dm31| [1e-3 eV^2]', 'delta chi2', dm_series, x_min, x_max, y_max, x_ticks, [(0.0, '0'), (0.5, '%.1f' % (y_max / 2)), (1.0, '%.0f' % y_max)], [1.0, 2.71]),\n                'caption': 'Profiled delta chi-square versus |dm31| for both orderings, read off the published scan grid.',\n            }\n\n        return outputs\n\n    def build_output(self, inputs, parameters, context):\n        return self.run(inputs, parameters, context)\n"
+        }
+      },
+      "selected": false,
+      "dragging": false
+    },
+    {
+      "type": "base",
+      "id": "3e208aef-4a4b-4a45-88e6-3dc44a2bfe46",
+      "position": {
+        "x": 100,
+        "y": 1500
+      },
+      "data": {
+        "general": {
+          "category": "utility",
+          "description": "Assembles the scientific report with methodology, statistical comparisons, figures, references and limitations.",
+          "name": "build_scientific_report"
+        },
+        "io": {
+          "inputs": [
+            {
+              "name": "comparison",
+              "type": "Object"
+            },
+            {
+              "name": "figures",
+              "type": "Object"
+            }
+          ],
+          "outputs": [
+            {
+              "name": "report",
+              "type": "Object"
+            }
+          ]
+        },
+        "config": {
+          "parameters": [
+            {
+              "defaultValue": "Neutrino Lorentz Invariance Study",
+              "name": "report_title",
+              "type": "String"
+            }
+          ]
+        },
+        "execution": {
+          "pythonCode": "from __future__ import annotations\n\nimport json\nfrom datetime import datetime, timezone\n\n\nclass Execution:\n    name: str = 'build_scientific_report'\n    description: str = 'Assembles the scientific report with methodology, statistical comparisons, figures, references and limitations.'\n    category: str = 'utility'\n\n    inputs: list[dict] = [\n        {'name': 'comparison', 'type': dict},\n        {'name': 'figures', 'type': dict},\n    ]\n\n    outputs: list[dict] = [\n        {'name': 'report', 'type': dict},\n    ]\n\n    parameters: dict = {\n        'report_title': {'type': str, 'default': 'Neutrino Lorentz Invariance Study'},\n    }\n\n    def _unwrap(self, inputs, key):\n        value = inputs.get(key)\n        if isinstance(value, str) and value.strip()[:1] == '{':\n            try:\n                value = json.loads(value)\n            except Exception:\n                return {}\n        if isinstance(value, dict) and key in value and isinstance(value[key], dict):\n            return value[key]\n        return value if isinstance(value, dict) else {}\n\n    def _table(self, header, rows):\n        lines = ['| ' + ' | '.join(header) + ' |', '|' + '|'.join(['---'] * len(header)) + '|']\n        for row in rows:\n            lines.append('| ' + ' | '.join('' if cell is None else str(cell) for cell in row) + ' |')\n        return '\\n'.join(lines)\n\n    def _fmt(self, value, digits=2, suffix=''):\n        if value is None:\n            return 'n/a'\n        try:\n            return format(float(value), '.%df' % digits) + suffix\n        except Exception:\n            return str(value)\n\n    def _sci(self, value):\n        if value is None:\n            return 'n/a'\n        try:\n            return '%.2e' % float(value)\n        except Exception:\n            return str(value)\n\n    def _scaled(self, values, factor):\n        if not values:\n            return 'n/a'\n        return '[' + ', '.join('%.2f' % (float(v) * factor) for v in values) + ']'\n\n    def _fig_filename(self, key):\n        mapping = {\n            'energy_spectrum': 'fig1_icecube_energy_spectrum.svg',\n            'zenith_distribution': 'fig2_icecube_zenith.svg',\n            'orca_theta23': 'fig3_orca6_theta23.svg',\n            'orca_dm31': 'fig4_orca6_dm31.svg',\n        }\n        return mapping.get(key, key + '.svg')\n\n    def run(self, inputs, parameters, context):\n        comparison = self._unwrap(inputs, 'comparison')\n        figures = self._unwrap(inputs, 'figures')\n        title = parameters.get('report_title', 'Neutrino Lorentz Invariance Study')\n        generated_at = datetime.now(timezone.utc).isoformat()\n\n        if not comparison or comparison.get('status') != 'ok':\n            return {'report': {'status': 'insufficient_data', 'generated_at_utc': generated_at, 'message': comparison.get('message') if comparison else 'No comparison input.', 'comparison_status': (comparison or {}).get('status')}}\n\n        orca = comparison.get('orca6') or {}\n        ice = comparison.get('icecube') or {}\n        checks = comparison.get('consistency_checks') or []\n        literature = comparison.get('literature_constraints') or []\n        scale = comparison.get('energy_scale_comparison') or {}\n        no_best = orca.get('best_fit_normal') or {}\n        io_best = orca.get('best_fit_inverted') or {}\n\n        figure_blocks = []\n        for key in ('energy_spectrum', 'zenith_distribution', 'orca_theta23', 'orca_dm31'):\n            entry = figures.get(key) or {}\n            if not entry.get('svg'):\n                continue\n            filename = self._fig_filename(key)\n            figure_blocks.append('### %s\\n\\n![%s](%s)\\n\\n%s\\n' % (key.replace('_', ' '), key, filename, entry.get('caption') or ''))\n\n        lines = []\n        lines.append('# %s' % title)\n        lines.append('')\n        lines.append('Generated %s by the Hermes Workflow Studio \"Neutrino Lorentz Invariance Study\" pipeline.' % generated_at)\n        lines.append('')\n        lines.append('## Abstract')\n        lines.append('')\n        lines.append('Two public neutrino datasets are analysed independently: the KM3NeT/ORCA6 433 kt-y oscillation open dataset and the IceCube IceTracks-DR2 track event release. ')\n        lines.append('The ORCA6 branch re-extracts the published two-parameter oscillation scan; the IceCube branch characterises the reconstructed-energy and zenith distributions of the released track sample. ')\n        lines.append(\"Neither branch reproduces the collaborations' full likelihood analyses, and no new Lorentz-invariance-violation (LIV) coefficient is derived here; published LIV limits are tabulated for comparison. \")\n        lines.append('Within those published limits the data are consistent with standard three-flavour oscillations, and the IceCube sample is not well described by a single power law.')\n        lines.append('')\n        lines.append('## 1. Scope: what this analysis is and is not')\n        lines.append('')\n        lines.append('- It is an independent, reproducible analysis of public data products using documented, transparent steps.')\n        lines.append('- It is not a reproduction of the KM3NeT or IceCube collaboration analyses: no detector simulation, response unfolding, nuisance-parameter profiling or event selection is performed.')\n        lines.append(\"- The ORCA6 values reported here are read off the collaboration's published chi-square scan; the IceCube values are descriptive statistics of the released event list.\")\n        lines.append('')\n        lines.append('## 2. Datasets and provenance')\n        lines.append('')\n        lines.append(self._table(['Dataset', 'Identifier', 'Content used'], [\n            ['KM3NeT/ORCA6 open data', 'doi:%s' % (orca.get('dataset_doi') or ''), 'chi-square landscapes (NO/IO), binning definition, README, ROOT response file (checksum only)'],\n            ['IceCube IceTracks-DR2', 'doi:%s' % (ice.get('dataset_doi') or ''), '%s seasons, reconstructed energy, zenith, angular error, MJD' % len(ice.get('seasons') or [])],\n        ]))\n        lines.append('')\n        lines.append('ORCA6 checksum verification across all release files: %s.' % ('all match' if orca.get('checksums_all_match') else 'see per-file manifest'))\n        lines.append('')\n        lines.append('## 3. Methodology')\n        lines.append('')\n        lines.append('### 3.1 KM3NeT/ORCA6 branch')\n        lines.append('')\n        lines.append('The release provides chi-square landscapes over theta23 and dm31 for normal and inverted ordering. ')\n        lines.append('For each ordering the workflow builds the scan grid, takes the minimum, profiles the surface over each parameter (minimising over the other), and reads intervals where delta chi2 <= 1 (1 sigma, 1 dof) and <= 2.71 (90% CL, 1 dof), interpolating linearly at the crossings. ')\n        lines.append('The ordering preference is reported as delta chi2 = chi2_min(IO) - chi2_min(NO), with sqrt(delta chi2) as an approximate significance.')\n        lines.append('')\n        lines.append('### 3.2 IceCube branch')\n        lines.append('')\n        lines.append('Event lists are downloaded from the Dataverse with ?format=original and verified against the published MD5 checksums, then parsed for reconstructed energy, zenith and angular error. ')\n        lines.append('The zenith convention is fixed by the data itself: the release satisfies Dec = zenith - 90 deg, so zenith > 90 deg corresponds to up-going, Earth-crossing events. ')\n        lines.append('Energy and zenith histograms are formed directly from the released values, and a single power-law probe is fitted over a stated range so that its goodness of fit can be judged.')\n        lines.append('')\n        lines.append('## 4. Results: KM3NeT/ORCA6')\n        lines.append('')\n        lines.append(self._table(['Quantity', 'Normal ordering', 'Inverted ordering'], [\n            ['theta23 [deg]', self._fmt(no_best.get('theta23_deg'), 3), self._fmt(io_best.get('theta23_deg'), 3)],\n            ['sin^2 theta23', self._fmt(no_best.get('sin2_theta23'), 4), self._fmt(io_best.get('sin2_theta23'), 4)],\n            ['|dm31| [1e-3 eV^2]', self._fmt((no_best.get('abs_dm31_ev2') or 0) * 1e3, 4), self._fmt((io_best.get('abs_dm31_ev2') or 0) * 1e3, 4)],\n            ['chi2 minimum', self._fmt(no_best.get('chi2'), 3), self._fmt(io_best.get('chi2'), 3)],\n            ['theta23 1 sigma / 90% [deg]', self._scaled(orca.get('theta23_1sigma'), 1), self._scaled(orca.get('theta23_90pct'), 1)],\n            ['|dm31| 1 sigma / 90% [1e-3]', self._scaled(orca.get('dm31_1sigma'), 1e3), self._scaled(orca.get('dm31_90pct'), 1e3)],\n        ]))\n        lines.append('')\n        lines.append('Preferred ordering: %s, delta chi2 = %s (about %s sigma). Maximal mixing (45 deg): %s.' % (\n            orca.get('preferred_ordering'), self._fmt(abs(orca.get('ordering_delta_chi2') or 0), 3), self._fmt(orca.get('ordering_significance_sigma'), 2),\n            next((check['verdict'] for check in checks if check.get('name') == 'ORCA6 theta23 vs maximal mixing'), 'not assessed')))\n        lines.append('')\n        lines.append('## 5. Results: IceCube')\n        lines.append('')\n        lines.append(self._table(['Quantity', 'Value'], [\n            ['Events analysed', ice.get('sample_size')],\n            ['Seasons', ', '.join(ice.get('seasons') or [])],\n            ['Highest reconstructed energy', '%s GeV (%.1f PeV)' % (self._sci(ice.get('max_energy_gev')), (float(ice.get('max_energy_gev') or 0)) / 1e6)],\n            ['Events above 1 PeV', ice.get('events_above_1pev')],\n            ['Events above 10 PeV', ice.get('events_above_10pev')],\n            ['Up/down ratio', '%s +- %s' % (self._fmt(ice.get('up_down_ratio'), 3), self._fmt(ice.get('up_down_error'), 3))],\n            ['Up-going fraction', self._fmt(ice.get('upgoing_fraction'), 4)],\n            ['Power-law probe gamma (descriptive)', '%s +- %s' % (self._fmt(ice.get('spectral_index'), 3), self._fmt(ice.get('spectral_index_error'), 3))],\n            ['Probe chi2/dof', self._fmt(ice.get('chi2_per_dof'), 1)],\n            ['Probe adequate?', 'yes' if ice.get('power_law_adequate') else 'no - single power law rejected'],\n        ]))\n        lines.append('')\n        lines.append('No spectral index is adopted. The power-law probe is reported only to show that a single index does not describe the released reconstructed-energy distribution; a physical flux index would require unfolding the detector response.')\n        lines.append('')\n        lines.append('## 6. Statistical comparisons')\n        lines.append('')\n        lines.append(self._table(['Test', 'Measured', 'Reference', 'Sigma', 'Verdict'], [\n            [check.get('name'), check.get('measured'), check.get('reference'), self._fmt(check.get('sigma'), 2), check.get('verdict')] for check in checks\n        ]))\n        lines.append('')\n        lines.append('## 7. Published LIV constraints (literature cross-reference)')\n        lines.append('')\n        lines.append(self._table(['Source', 'Quantity', 'Published value', 'Link'], [\n            [entry.get('source'), entry.get('quantity'), entry.get('value'), entry.get('url')] for entry in literature\n        ]))\n        lines.append('')\n        lines.append('Highest reconstructed energy in the sample analysed here: %s GeV, i.e. %s of the 220 PeV event energy behind the KM3NeT second-order bound, and %s of the Planck energy.' % (\n            self._sci(scale.get('highest_energy_in_sample_gev')), self._fmt(scale.get('ratio_sample_to_km3_230213a'), 4),\n            self._sci((scale.get('highest_energy_in_sample_gev') or 0) / (scale.get('planck_energy_gev') or 1))))\n        lines.append('')\n        lines.append('## 8. Figures')\n        lines.append('')\n        for block in figure_blocks:\n            lines.append(block)\n        lines.append('## 9. Interpretation')\n        lines.append('')\n        lines.append(comparison.get('interpretation') or '')\n        lines.append('')\n        lines.append('## 10. Limitations and threats to validity')\n        lines.append('')\n        for item in comparison.get('limitations') or []:\n            lines.append('- %s' % item)\n        lines.append('')\n        lines.append('## 11. Reproducibility and references')\n        lines.append('')\n        for entry in literature:\n            lines.append('- %s - %s' % (entry.get('source'), entry.get('url')))\n        lines.append('- KM3NeT ORCA6 open data: https://opendata.km3net.de/dataset.xhtml?persistentId=doi:%s' % (orca.get('dataset_doi') or ''))\n        lines.append('- IceCube IceTracks-DR2: https://doi.org/%s' % (ice.get('dataset_doi') or ''))\n        lines.append('- This workflow reruns end-to-end from the same public endpoints; no intermediate data are cached between runs.')\n\n        report = {\n            'status': 'ok',\n            'title': title,\n            'generated_at_utc': generated_at,\n            'abstract': lines[5] if len(lines) > 5 else '',\n            'scope': 'Independent analysis of public KM3NeT/ORCA6 and IceCube DR2 data products; not a reproduction of the collaboration analyses.',\n            'orca6': orca,\n            'icecube': ice,\n            'consistency_checks': checks,\n            'literature_constraints': literature,\n            'energy_scale_comparison': scale,\n            'figures': {key: {'caption': (figures.get(key) or {}).get('caption'), 'filename': self._fig_filename(key), 'svg': (figures.get(key) or {}).get('svg')} for key in figures},\n            'limitations': comparison.get('limitations') or [],\n            'markdown': '\\n'.join(lines),\n        }\n\n        return {'report': report}\n\n    def build_output(self, inputs, parameters, context):\n        return self.run(inputs, parameters, context)\n"
+        }
+      },
+      "selected": false,
+      "dragging": false
+    }
+  ],
+  "edges": [
+    {
+      "id": "xy-edge__ae04a44e-8174-453e-b0db-44eb800b337bicecube_raw-cea17819-5219-444c-9024-2d90ab6d9851icecube_raw",
+      "type": "smoothstep",
+      "animated": true,
+      "style": {
+        "stroke": "#64748b",
+        "strokeWidth": 2
+      },
+      "source": "ae04a44e-8174-453e-b0db-44eb800b337b",
+      "sourceHandle": "icecube_raw",
+      "target": "cea17819-5219-444c-9024-2d90ab6d9851",
+      "targetHandle": "icecube_raw"
+    },
+    {
+      "id": "xy-edge__cea17819-5219-444c-9024-2d90ab6d9851icecube_analysis-4d8bbb17-9d04-4800-95ce-05b9e8212d30icecube_analysis",
+      "type": "smoothstep",
+      "animated": true,
+      "style": {
+        "stroke": "#64748b",
+        "strokeWidth": 2
+      },
+      "source": "cea17819-5219-444c-9024-2d90ab6d9851",
+      "sourceHandle": "icecube_analysis",
+      "target": "4d8bbb17-9d04-4800-95ce-05b9e8212d30",
+      "targetHandle": "icecube_analysis"
+    },
+    {
+      "id": "xy-edge__ae04a44e-8174-453e-b0db-44eb800b337bicecube_raw-4d8bbb17-9d04-4800-95ce-05b9e8212d30icecube_raw",
+      "type": "smoothstep",
+      "animated": true,
+      "style": {
+        "stroke": "#64748b",
+        "strokeWidth": 2
+      },
+      "source": "ae04a44e-8174-453e-b0db-44eb800b337b",
+      "sourceHandle": "icecube_raw",
+      "target": "4d8bbb17-9d04-4800-95ce-05b9e8212d30",
+      "targetHandle": "icecube_raw"
+    },
+    {
+      "id": "xy-edge__d0c1dfc9-7e11-452e-8a9a-9692888b735aorca_raw-7d3ff5e4-e7be-4d81-bf4d-e4db5c818759orca_raw",
+      "type": "smoothstep",
+      "animated": true,
+      "style": {
+        "stroke": "#64748b",
+        "strokeWidth": 2
+      },
+      "source": "d0c1dfc9-7e11-452e-8a9a-9692888b735a",
+      "sourceHandle": "orca_raw",
+      "target": "7d3ff5e4-e7be-4d81-bf4d-e4db5c818759",
+      "targetHandle": "orca_raw"
+    },
+    {
+      "id": "xy-edge__7d3ff5e4-e7be-4d81-bf4d-e4db5c818759orca_analysis-4d8bbb17-9d04-4800-95ce-05b9e8212d30orca_analysis",
+      "type": "smoothstep",
+      "animated": true,
+      "style": {
+        "stroke": "#64748b",
+        "strokeWidth": 2
+      },
+      "source": "7d3ff5e4-e7be-4d81-bf4d-e4db5c818759",
+      "sourceHandle": "orca_analysis",
+      "target": "4d8bbb17-9d04-4800-95ce-05b9e8212d30",
+      "targetHandle": "orca_analysis"
+    },
+    {
+      "id": "xy-edge__d0c1dfc9-7e11-452e-8a9a-9692888b735aorca_raw-4d8bbb17-9d04-4800-95ce-05b9e8212d30orca_raw",
+      "type": "smoothstep",
+      "animated": true,
+      "style": {
+        "stroke": "#64748b",
+        "strokeWidth": 2
+      },
+      "source": "d0c1dfc9-7e11-452e-8a9a-9692888b735a",
+      "sourceHandle": "orca_raw",
+      "target": "4d8bbb17-9d04-4800-95ce-05b9e8212d30",
+      "targetHandle": "orca_raw"
+    },
+    {
+      "id": "xy-edge__4d8bbb17-9d04-4800-95ce-05b9e8212d30comparison-3e208aef-4a4b-4a45-88e6-3dc44a2bfe46comparison",
+      "type": "smoothstep",
+      "animated": true,
+      "style": {
+        "stroke": "#64748b",
+        "strokeWidth": 2
+      },
+      "source": "4d8bbb17-9d04-4800-95ce-05b9e8212d30",
+      "sourceHandle": "comparison",
+      "target": "3e208aef-4a4b-4a45-88e6-3dc44a2bfe46",
+      "targetHandle": "comparison"
+    },
+    {
+      "id": "xy-edge__4d8bbb17-9d04-4800-95ce-05b9e8212d30figures-3e208aef-4a4b-4a45-88e6-3dc44a2bfe46figures",
+      "type": "smoothstep",
+      "animated": true,
+      "style": {
+        "stroke": "#64748b",
+        "strokeWidth": 2
+      },
+      "source": "4d8bbb17-9d04-4800-95ce-05b9e8212d30",
+      "sourceHandle": "figures",
+      "target": "3e208aef-4a4b-4a45-88e6-3dc44a2bfe46",
+      "targetHandle": "figures"
+    }
+  ]
+}

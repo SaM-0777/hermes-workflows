@@ -1,0 +1,357 @@
+{
+  "id": "8bc98c2b-537c-46e0-b5db-d2bf5c6a13d0",
+  "name": "Sales Data Analysis Pipeline",
+  "createdAt": "2026-11-11T17:14:47.972Z",
+  "updatedAt": "2026-11-11T17:14:47.986Z",
+  "nodes": [
+    {
+      "type": "base",
+      "id": "1fec4abe-58f0-49e4-95b9-35d7e43b5c46",
+      "position": {
+        "x": 100,
+        "y": 250
+      },
+      "data": {
+        "general": {
+          "name": "generate_sales_data",
+          "description": "Generates 20 sample sales orders plus 3 intentionally invalid records.",
+          "category": "data"
+        },
+        "io": {
+          "inputs": [],
+          "outputs": [
+            {
+              "name": "records",
+              "type": "Array"
+            }
+          ]
+        },
+        "config": {
+          "parameters": [
+            {
+              "name": "seed",
+              "type": "Number",
+              "defaultValue": "42"
+            }
+          ]
+        },
+        "execution": {
+          "pythonCode": "from typing import Any\n\nimport random\nfrom datetime import date, timedelta\n\n\nclass Execution:\n    name: str = \"generate_sales_data\"\n    description: str = \"Generates 20 sample sales orders plus 3 intentionally invalid records.\"\n    category: str = \"data\"\n\n    inputs: list[dict] = []\n\n    outputs: list[dict] = [\n        {\"name\": \"records\", \"type\": list},\n    ]\n\n    parameters: dict = {\n        \"seed\": {\"type\": float, \"default\": 42},\n    }\n\n    def run(self, inputs, parameters, context):\n        rng = random.Random(int(parameters.get(\"seed\", 42)))\n        customers = [\"CUST-%03d\" % i for i in range(1, 13)]\n        catalogue = [\n            (\"Laptop Pro 15\", 1499.00),\n            (\"Wireless Mouse\", 39.50),\n            (\"Mechanical Keyboard\", 129.00),\n            (\"4K Monitor\", 429.00),\n            (\"USB-C Hub\", 79.00),\n            (\"Noise-Cancel Headphones\", 289.00),\n            (\"Office Chair\", 349.00),\n            (\"Webcam HD\", 99.00),\n        ]\n        regions = [\"North\", \"South\", \"East\", \"West\"]\n        start = date(2026, 1, 5)\n\n        records: list[dict] = []\n        for index in range(1, 21):\n            product, unit_price = catalogue[rng.randrange(len(catalogue))]\n            records.append(\n                {\n                    \"order_id\": \"ORD-%04d\" % (1000 + index),\n                    \"customer_id\": customers[rng.randrange(len(customers))],\n                    \"product\": product,\n                    \"quantity\": rng.randint(1, 6),\n                    \"unit_price\": unit_price,\n                    \"order_date\": (start + timedelta(days=rng.randint(0, 80))).isoformat(),\n                    \"region\": regions[rng.randrange(len(regions))],\n                }\n            )\n\n        # Intentionally invalid records for the validation stage.\n        records.append(\n            {\n                \"order_id\": \"ORD-9001\",\n                \"customer_id\": \"\",\n                \"product\": \"4K Monitor\",\n                \"quantity\": 2,\n                \"unit_price\": 429.00,\n                \"order_date\": \"2026-02-10\",\n                \"region\": \"North\",\n            }\n        )\n        records.append(\n            {\n                \"order_id\": \"ORD-9002\",\n                \"customer_id\": \"CUST-004\",\n                \"product\": \"USB-C Hub\",\n                \"quantity\": 0,\n                \"unit_price\": 79.00,\n                \"order_date\": \"2026-02-12\",\n                \"region\": \"West\",\n            }\n        )\n        records.append(\n            {\n                \"order_id\": \"ORD-9003\",\n                \"customer_id\": \"CUST-007\",\n                \"product\": \"Office Chair\",\n                \"quantity\": 3,\n                \"unit_price\": -349.00,\n                \"order_date\": \"2026-13-45\",\n                \"region\": \"Atlantis\",\n            }\n        )\n\n        return {\"records\": records}\n\n    def build_output(self, inputs, parameters, context):\n        return self.run(inputs, parameters, context)\n"
+        }
+      },
+      "selected": false,
+      "dragging": false
+    },
+    {
+      "type": "base",
+      "id": "11083e8a-ada8-42f3-9282-1888a6f4dbab",
+      "position": {
+        "x": 100,
+        "y": 500
+      },
+      "data": {
+        "general": {
+          "name": "validate_clean_data",
+          "description": "Validates required sales fields, rejects invalid rows, and computes order totals.",
+          "category": "processing"
+        },
+        "io": {
+          "inputs": [
+            {
+              "name": "records",
+              "type": "Array"
+            }
+          ],
+          "outputs": [
+            {
+              "name": "clean_records",
+              "type": "Array"
+            },
+            {
+              "name": "rejected_count",
+              "type": "Number"
+            },
+            {
+              "name": "rejected_details",
+              "type": "Array"
+            }
+          ]
+        },
+        "config": {
+          "parameters": [
+            {
+              "name": "min_quantity",
+              "type": "Number",
+              "defaultValue": "1"
+            }
+          ]
+        },
+        "execution": {
+          "pythonCode": "from typing import Any\n\nfrom datetime import datetime\n\n\nclass Execution:\n    name: str = \"validate_clean_data\"\n    description: str = \"Validates required sales fields, rejects invalid rows, and computes order totals.\"\n    category: str = \"processing\"\n\n    inputs: list[dict] = [\n        {\"name\": \"records\", \"type\": list},\n    ]\n\n    outputs: list[dict] = [\n        {\"name\": \"clean_records\", \"type\": list},\n        {\"name\": \"rejected_count\", \"type\": float},\n        {\"name\": \"rejected_details\", \"type\": list},\n    ]\n\n    parameters: dict = {\n        \"min_quantity\": {\"type\": float, \"default\": 1},\n    }\n\n    REQUIRED = (\n        \"order_id\",\n        \"customer_id\",\n        \"product\",\n        \"quantity\",\n        \"unit_price\",\n        \"order_date\",\n        \"region\",\n    )\n    REGIONS = (\"North\", \"South\", \"East\", \"West\")\n\n    def _validate(self, record: Any, min_quantity: int) -> str:\n        if not isinstance(record, dict):\n            return \"record is not an object\"\n        for field in self.REQUIRED:\n            if field not in record:\n                return \"missing field: %s\" % field\n            value = record[field]\n            if isinstance(value, str) and not value.strip():\n                return \"empty field: %s\" % field\n            if value is None:\n                return \"empty field: %s\" % field\n\n        try:\n            quantity = int(record[\"quantity\"])\n        except (TypeError, ValueError):\n            return \"quantity is not an integer\"\n        if quantity < min_quantity:\n            return \"quantity below minimum (%s)\" % min_quantity\n\n        try:\n            unit_price = float(record[\"unit_price\"])\n        except (TypeError, ValueError):\n            return \"unit_price is not numeric\"\n        if unit_price <= 0:\n            return \"unit_price must be positive\"\n\n        try:\n            datetime.strptime(str(record[\"order_date\"]), \"%Y-%m-%d\")\n        except (TypeError, ValueError):\n            return \"order_date is not ISO YYYY-MM-DD\"\n\n        if str(record[\"region\"]) not in self.REGIONS:\n            return \"unknown region: %s\" % record[\"region\"]\n\n        return \"\"\n\n    def run(self, inputs, parameters, context):\n        records = inputs.get(\"records\") or []\n        min_quantity = int(parameters.get(\"min_quantity\", 1))\n\n        clean_records: list[dict] = []\n        rejected_details: list[dict] = []\n\n        for record in records:\n            reason = self._validate(record, min_quantity)\n            if reason:\n                rejected_details.append(\n                    {\n                        \"order_id\": record.get(\"order_id\") if isinstance(record, dict) else None,\n                        \"reason\": reason,\n                    }\n                )\n                continue\n\n            quantity = int(record[\"quantity\"])\n            unit_price = float(record[\"unit_price\"])\n            cleaned = dict(record)\n            cleaned[\"quantity\"] = quantity\n            cleaned[\"unit_price\"] = round(unit_price, 2)\n            cleaned[\"total_amount\"] = round(quantity * unit_price, 2)\n            clean_records.append(cleaned)\n\n        return {\n            \"clean_records\": clean_records,\n            \"rejected_count\": len(rejected_details),\n            \"rejected_details\": rejected_details,\n        }\n\n    def build_output(self, inputs, parameters, context):\n        return self.run(inputs, parameters, context)\n"
+        }
+      },
+      "selected": false,
+      "dragging": false
+    },
+    {
+      "type": "base",
+      "id": "cf6c4003-73a6-4f70-b53b-f7426e533f28",
+      "position": {
+        "x": 100,
+        "y": 750
+      },
+      "data": {
+        "general": {
+          "name": "revenue_analysis",
+          "description": "Computes revenue totals, regional breakdown, and product performance.",
+          "category": "processing"
+        },
+        "io": {
+          "inputs": [
+            {
+              "name": "clean_records",
+              "type": "Array"
+            }
+          ],
+          "outputs": [
+            {
+              "name": "revenue_metrics",
+              "type": "Object"
+            }
+          ]
+        },
+        "config": {
+          "parameters": []
+        },
+        "execution": {
+          "pythonCode": "from typing import Any\n\n\nclass Execution:\n    name: str = \"revenue_analysis\"\n    description: str = \"Computes revenue totals, regional breakdown, and product performance.\"\n    category: str = \"processing\"\n\n    inputs: list[dict] = [\n        {\"name\": \"clean_records\", \"type\": list},\n    ]\n\n    outputs: list[dict] = [\n        {\"name\": \"revenue_metrics\", \"type\": dict},\n    ]\n\n    parameters: dict = {}\n\n    def run(self, inputs, parameters, context):\n        records = inputs.get(\"clean_records\") or []\n\n        total_revenue = 0.0\n        order_count = 0\n        revenue_by_region: dict = {}\n        product_revenue: dict = {}\n        product_units: dict = {}\n\n        for record in records:\n            amount = float(record.get(\"total_amount\", 0.0))\n            region = str(record.get(\"region\", \"Unknown\"))\n            product = str(record.get(\"product\", \"Unknown\"))\n\n            total_revenue += amount\n            order_count += 1\n            revenue_by_region[region] = round(revenue_by_region.get(region, 0.0) + amount, 2)\n            product_revenue[product] = round(product_revenue.get(product, 0.0) + amount, 2)\n            product_units[product] = product_units.get(product, 0) + int(record.get(\"quantity\", 0))\n\n        average_order_value = round(total_revenue / order_count, 2) if order_count else 0.0\n        best_selling_product = max(product_units, key=product_units.get) if product_units else None\n        top_revenue_product = max(product_revenue, key=product_revenue.get) if product_revenue else None\n\n        return {\n            \"revenue_metrics\": {\n                \"total_revenue\": round(total_revenue, 2),\n                \"average_order_value\": average_order_value,\n                \"total_orders\": order_count,\n                \"revenue_by_region\": revenue_by_region,\n                \"best_selling_product\": best_selling_product,\n                \"best_selling_units\": product_units.get(best_selling_product, 0) if best_selling_product else 0,\n                \"top_revenue_product\": top_revenue_product,\n                \"top_revenue_amount\": product_revenue.get(top_revenue_product, 0.0) if top_revenue_product else 0.0,\n                \"product_units\": product_units,\n                \"product_revenue\": product_revenue,\n            }\n        }\n\n    def build_output(self, inputs, parameters, context):\n        return self.run(inputs, parameters, context)\n"
+        }
+      },
+      "selected": false,
+      "dragging": false
+    },
+    {
+      "type": "base",
+      "id": "87925e22-cfb2-41d7-aa9a-0a00f75f8567",
+      "position": {
+        "x": 100,
+        "y": 1000
+      },
+      "data": {
+        "general": {
+          "name": "customer_analysis",
+          "description": "Computes customer counts, repeat behaviour, and spending segments.",
+          "category": "processing"
+        },
+        "io": {
+          "inputs": [
+            {
+              "name": "clean_records",
+              "type": "Array"
+            }
+          ],
+          "outputs": [
+            {
+              "name": "customer_metrics",
+              "type": "Object"
+            }
+          ]
+        },
+        "config": {
+          "parameters": [
+            {
+              "name": "high_value_threshold",
+              "type": "Number",
+              "defaultValue": "2000"
+            },
+            {
+              "name": "medium_value_threshold",
+              "type": "Number",
+              "defaultValue": "800"
+            }
+          ]
+        },
+        "execution": {
+          "pythonCode": "from typing import Any\n\n\nclass Execution:\n    name: str = \"customer_analysis\"\n    description: str = \"Computes customer counts, repeat behaviour, and spending segments.\"\n    category: str = \"processing\"\n\n    inputs: list[dict] = [\n        {\"name\": \"clean_records\", \"type\": list},\n    ]\n\n    outputs: list[dict] = [\n        {\"name\": \"customer_metrics\", \"type\": dict},\n    ]\n\n    parameters: dict = {\n        \"high_value_threshold\": {\"type\": float, \"default\": 2000},\n        \"medium_value_threshold\": {\"type\": float, \"default\": 800},\n    }\n\n    def run(self, inputs, parameters, context):\n        records = inputs.get(\"clean_records\") or []\n        high_threshold = float(parameters.get(\"high_value_threshold\", 2000))\n        medium_threshold = float(parameters.get(\"medium_value_threshold\", 800))\n\n        spending: dict = {}\n        orders: dict = {}\n        for record in records:\n            customer = str(record.get(\"customer_id\", \"UNKNOWN\"))\n            amount = float(record.get(\"total_amount\", 0.0))\n            spending[customer] = round(spending.get(customer, 0.0) + amount, 2)\n            orders[customer] = orders.get(customer, 0) + 1\n\n        unique_customers = len(spending)\n        repeat_customers = sum(1 for count in orders.values() if count > 1)\n        average_spending = (\n            round(sum(spending.values()) / unique_customers, 2) if unique_customers else 0.0\n        )\n\n        segments = {\"high\": [], \"medium\": [], \"low\": []}\n        for customer, total in sorted(spending.items(), key=lambda item: item[1], reverse=True):\n            if total >= high_threshold:\n                segments[\"high\"].append(customer)\n            elif total >= medium_threshold:\n                segments[\"medium\"].append(customer)\n            else:\n                segments[\"low\"].append(customer)\n\n        top_customers = sorted(spending.items(), key=lambda item: item[1], reverse=True)[:3]\n\n        return {\n            \"customer_metrics\": {\n                \"total_unique_customers\": unique_customers,\n                \"repeat_customers\": repeat_customers,\n                \"repeat_rate\": round(repeat_customers / unique_customers, 2) if unique_customers else 0.0,\n                \"average_spending_per_customer\": average_spending,\n                \"segment_thresholds\": {\"high\": high_threshold, \"medium\": medium_threshold},\n                \"segment_counts\": {\n                    \"high\": len(segments[\"high\"]),\n                    \"medium\": len(segments[\"medium\"]),\n                    \"low\": len(segments[\"low\"]),\n                },\n                \"customer_spending\": spending,\n                \"customer_orders\": orders,\n                \"top_customers\": [{\"customer_id\": c, \"total_spend\": t} for c, t in top_customers],\n            }\n        }\n\n    def build_output(self, inputs, parameters, context):\n        return self.run(inputs, parameters, context)\n"
+        }
+      },
+      "selected": false,
+      "dragging": false
+    },
+    {
+      "type": "base",
+      "id": "824889bc-c613-437e-99a3-eadab019a358",
+      "position": {
+        "x": 100,
+        "y": 1250
+      },
+      "data": {
+        "general": {
+          "name": "business_insights",
+          "description": "Derives business insights from revenue and customer analysis outputs.",
+          "category": "processing"
+        },
+        "io": {
+          "inputs": [
+            {
+              "name": "revenue_metrics",
+              "type": "Object"
+            },
+            {
+              "name": "customer_metrics",
+              "type": "Object"
+            }
+          ],
+          "outputs": [
+            {
+              "name": "insights",
+              "type": "Array"
+            }
+          ]
+        },
+        "config": {
+          "parameters": []
+        },
+        "execution": {
+          "pythonCode": "from typing import Any\n\n\nclass Execution:\n    name: str = \"business_insights\"\n    description: str = \"Derives business insights from revenue and customer analysis outputs.\"\n    category: str = \"processing\"\n\n    inputs: list[dict] = [\n        {\"name\": \"revenue_metrics\", \"type\": dict},\n        {\"name\": \"customer_metrics\", \"type\": dict},\n    ]\n\n    outputs: list[dict] = [\n        {\"name\": \"insights\", \"type\": list},\n    ]\n\n    parameters: dict = {}\n\n    def run(self, inputs, parameters, context):\n        revenue = inputs.get(\"revenue_metrics\") or {}\n        customers = inputs.get(\"customer_metrics\") or {}\n\n        total_revenue = float(revenue.get(\"total_revenue\", 0.0))\n        orders = int(revenue.get(\"total_orders\", 0))\n        aov = float(revenue.get(\"average_order_value\", 0.0))\n        by_region = revenue.get(\"revenue_by_region\") or {}\n        best_seller = revenue.get(\"best_selling_product\")\n        best_units = int(revenue.get(\"best_selling_units\", 0))\n        top_product = revenue.get(\"top_revenue_product\")\n        top_amount = float(revenue.get(\"top_revenue_amount\", 0.0))\n        product_units = revenue.get(\"product_units\") or {}\n\n        unique_customers = int(customers.get(\"total_unique_customers\", 0))\n        repeat_customers = int(customers.get(\"repeat_customers\", 0))\n        repeat_rate = float(customers.get(\"repeat_rate\", 0.0))\n        avg_spend = float(customers.get(\"average_spending_per_customer\", 0.0))\n        segment_counts = customers.get(\"segment_counts\") or {}\n        spending = customers.get(\"customer_spending\") or {}\n\n        insights: list[dict] = []\n\n        insights.append(\n            {\n                \"title\": \"Revenue baseline\",\n                \"detail\": \"The cleaned dataset produced %s orders worth $%s, an average order value of $%s.\"\n                % (orders, format(total_revenue, \",.2f\"), format(aov, \",.2f\")),\n            }\n        )\n\n        if by_region:\n            top_region = max(by_region, key=by_region.get)\n            top_region_revenue = float(by_region[top_region])\n            share = round(top_region_revenue / total_revenue * 100, 1) if total_revenue else 0.0\n            weakest_region = min(by_region, key=by_region.get)\n            insights.append(\n                {\n                    \"title\": \"Regional concentration\",\n                    \"detail\": \"%s leads with $%s (%.1f%% of revenue), while %s is weakest at $%s.\"\n                    % (\n                        top_region,\n                        format(top_region_revenue, \",.2f\"),\n                        share,\n                        weakest_region,\n                        format(float(by_region[weakest_region]), \",.2f\"),\n                    ),\n                }\n            )\n\n        if best_seller:\n            insights.append(\n                {\n                    \"title\": \"Volume leader\",\n                    \"detail\": \"%s moves the most units (%s), showing strongest demand at its current price point.\"\n                    % (best_seller, best_units),\n                }\n            )\n\n        if top_product:\n            product_share = round(top_amount / total_revenue * 100, 1) if total_revenue else 0.0\n            mismatch = top_product != best_seller\n            insights.append(\n                {\n                    \"title\": \"Revenue driver\",\n                    \"detail\": \"%s generates the most revenue ($%s, %.1f%% of total)%s.\"\n                    % (\n                        top_product,\n                        format(top_amount, \",.2f\"),\n                        product_share,\n                        \" and differs from the unit-volume leader, indicating a higher price point\"\n                        if mismatch\n                        else \"\",\n                    ),\n                }\n            )\n\n        if unique_customers:\n            insights.append(\n                {\n                    \"title\": \"Customer loyalty\",\n                    \"detail\": \"%s of %s customers ordered more than once (%.1f%% repeat rate), with average spend of $%s per customer.\"\n                    % (\n                        repeat_customers,\n                        unique_customers,\n                        repeat_rate * 100,\n                        format(avg_spend, \",.2f\"),\n                    ),\n                }\n            )\n\n        if segment_counts and spending:\n            high_count = int(segment_counts.get(\"high\", 0))\n            high_total = sum(\n                amount for amount in spending.values() if amount >= float(\n                    (customers.get(\"segment_thresholds\") or {}).get(\"high\", 2000)\n                )\n            )\n            high_share = round(high_total / total_revenue * 100, 1) if total_revenue else 0.0\n            insights.append(\n                {\n                    \"title\": \"Spend concentration\",\n                    \"detail\": \"%s high-value customers contribute $%s, or %.1f%% of total revenue, while %s customers sit in the low-spend segment.\"\n                    % (\n                        high_count,\n                        format(high_total, \",.2f\"),\n                        high_share,\n                        int(segment_counts.get(\"low\", 0)),\n                    ),\n                }\n            )\n\n        if aov and avg_spend:\n            ratio = round(avg_spend / aov, 2)\n            insights.append(\n                {\n                    \"title\": \"Purchase frequency signal\",\n                    \"detail\": \"Average customer spend is %.2fx the average order value, implying roughly %.1f orders per active customer.\"\n                    % (ratio, ratio),\n                }\n            )\n\n        if product_units:\n            bottom_product = min(product_units, key=product_units.get)\n            insights.append(\n                {\n                    \"title\": \"Underperforming SKU\",\n                    \"detail\": \"%s is the slowest mover with %s units, a candidate for promotion or delisting.\"\n                    % (bottom_product, product_units[bottom_product]),\n                }\n            )\n\n        return {\"insights\": insights}\n\n    def build_output(self, inputs, parameters, context):\n        return self.run(inputs, parameters, context)\n"
+        }
+      },
+      "selected": false,
+      "dragging": false
+    },
+    {
+      "type": "base",
+      "id": "ebe3d1ff-59e5-4e80-889c-33c7ae0e7e26",
+      "position": {
+        "x": 100,
+        "y": 1500
+      },
+      "data": {
+        "general": {
+          "name": "final_report",
+          "description": "Assembles business insights and data-quality counts into a structured report.",
+          "category": "utility"
+        },
+        "io": {
+          "inputs": [
+            {
+              "name": "insights",
+              "type": "Array"
+            },
+            {
+              "name": "rejected_count",
+              "type": "Number"
+            }
+          ],
+          "outputs": [
+            {
+              "name": "report",
+              "type": "Object"
+            }
+          ]
+        },
+        "config": {
+          "parameters": []
+        },
+        "execution": {
+          "pythonCode": "from typing import Any\n\n\nclass Execution:\n    name: str = \"final_report\"\n    description: str = \"Assembles business insights and data-quality counts into a structured report.\"\n    category: str = \"utility\"\n\n    inputs: list[dict] = [\n        {\"name\": \"insights\", \"type\": list},\n        {\"name\": \"rejected_count\", \"type\": float},\n    ]\n\n    outputs: list[dict] = [\n        {\"name\": \"report\", \"type\": dict},\n    ]\n\n    parameters: dict = {}\n\n    def run(self, inputs, parameters, context):\n        insights = inputs.get(\"insights\") or []\n        rejected = int(inputs.get(\"rejected_count\") or 0)\n\n        titles = [str(item.get(\"title\", \"Insight\")) for item in insights if isinstance(item, dict)]\n\n        report = {\n            \"title\": \"Sales Data Analysis Pipeline - Final Report\",\n            \"sections\": {\n                \"data_quality\": {\n                    \"rejected_records\": rejected,\n                    \"status\": \"clean\" if rejected == 0 else \"cleaned_with_rejections\",\n                    \"note\": \"%s record(s) failed validation and were excluded from analysis.\" % rejected,\n                },\n                \"executive_summary\": \"%s business insights were generated from the validated sales data.\" % len(insights),\n                \"insights\": insights,\n                \"insight_titles\": titles,\n            },\n            \"metrics\": {\n                \"insight_count\": len(insights),\n                \"rejected_count\": rejected,\n                \"analysis_complete\": len(insights) >= 5 and rejected >= 0,\n            },\n        }\n\n        return {\"report\": report}\n\n    def build_output(self, inputs, parameters, context):\n        return self.run(inputs, parameters, context)\n"
+        }
+      },
+      "selected": false,
+      "dragging": false
+    }
+  ],
+  "edges": [
+    {
+      "id": "xy-edge__1fec4abe-58f0-49e4-95b9-35d7e43b5c46records-11083e8a-ada8-42f3-9282-1888a6f4dbabrecords",
+      "type": "smoothstep",
+      "animated": true,
+      "style": {
+        "stroke": "#64748b",
+        "strokeWidth": 2
+      },
+      "source": "1fec4abe-58f0-49e4-95b9-35d7e43b5c46",
+      "sourceHandle": "records",
+      "target": "11083e8a-ada8-42f3-9282-1888a6f4dbab",
+      "targetHandle": "records"
+    },
+    {
+      "id": "xy-edge__11083e8a-ada8-42f3-9282-1888a6f4dbabclean_records-cf6c4003-73a6-4f70-b53b-f7426e533f28clean_records",
+      "type": "smoothstep",
+      "animated": true,
+      "style": {
+        "stroke": "#64748b",
+        "strokeWidth": 2
+      },
+      "source": "11083e8a-ada8-42f3-9282-1888a6f4dbab",
+      "sourceHandle": "clean_records",
+      "target": "cf6c4003-73a6-4f70-b53b-f7426e533f28",
+      "targetHandle": "clean_records"
+    },
+    {
+      "id": "xy-edge__11083e8a-ada8-42f3-9282-1888a6f4dbabclean_records-87925e22-cfb2-41d7-aa9a-0a00f75f8567clean_records",
+      "type": "smoothstep",
+      "animated": true,
+      "style": {
+        "stroke": "#64748b",
+        "strokeWidth": 2
+      },
+      "source": "11083e8a-ada8-42f3-9282-1888a6f4dbab",
+      "sourceHandle": "clean_records",
+      "target": "87925e22-cfb2-41d7-aa9a-0a00f75f8567",
+      "targetHandle": "clean_records"
+    },
+    {
+      "id": "xy-edge__cf6c4003-73a6-4f70-b53b-f7426e533f28revenue_metrics-824889bc-c613-437e-99a3-eadab019a358revenue_metrics",
+      "type": "smoothstep",
+      "animated": true,
+      "style": {
+        "stroke": "#64748b",
+        "strokeWidth": 2
+      },
+      "source": "cf6c4003-73a6-4f70-b53b-f7426e533f28",
+      "sourceHandle": "revenue_metrics",
+      "target": "824889bc-c613-437e-99a3-eadab019a358",
+      "targetHandle": "revenue_metrics"
+    },
+    {
+      "id": "xy-edge__87925e22-cfb2-41d7-aa9a-0a00f75f8567customer_metrics-824889bc-c613-437e-99a3-eadab019a358customer_metrics",
+      "type": "smoothstep",
+      "animated": true,
+      "style": {
+        "stroke": "#64748b",
+        "strokeWidth": 2
+      },
+      "source": "87925e22-cfb2-41d7-aa9a-0a00f75f8567",
+      "sourceHandle": "customer_metrics",
+      "target": "824889bc-c613-437e-99a3-eadab019a358",
+      "targetHandle": "customer_metrics"
+    },
+    {
+      "id": "xy-edge__824889bc-c613-437e-99a3-eadab019a358insights-ebe3d1ff-59e5-4e80-889c-33c7ae0e7e26insights",
+      "type": "smoothstep",
+      "animated": true,
+      "style": {
+        "stroke": "#64748b",
+        "strokeWidth": 2
+      },
+      "source": "824889bc-c613-437e-99a3-eadab019a358",
+      "sourceHandle": "insights",
+      "target": "ebe3d1ff-59e5-4e80-889c-33c7ae0e7e26",
+      "targetHandle": "insights"
+    },
+    {
+      "id": "xy-edge__11083e8a-ada8-42f3-9282-1888a6f4dbabrejected_count-ebe3d1ff-59e5-4e80-889c-33c7ae0e7e26rejected_count",
+      "type": "smoothstep",
+      "animated": true,
+      "style": {
+        "stroke": "#64748b",
+        "strokeWidth": 2
+      },
+      "source": "11083e8a-ada8-42f3-9282-1888a6f4dbab",
+      "sourceHandle": "rejected_count",
+      "target": "ebe3d1ff-59e5-4e80-889c-33c7ae0e7e26",
+      "targetHandle": "rejected_count"
+    }
+  ]
+}
