@@ -2,7 +2,7 @@ import { mkdir, writeFile } from "fs/promises";
 import path from "path";
 
 const root = process.cwd();
-const outputDir = path.join(root, "");
+const outputDir = path.join(root, "desktop");
 const outputPath = path.join(outputDir, "plugin.js");
 const standaloneOutputPath = path.join(root, "plugin.js");
 

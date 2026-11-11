@@ -27,6 +27,7 @@ metadata:
       - duplicate_workflow_node
       - add_workflow_edge
       - remove_workflow_edge
+      - run_workflow
 ---
 
 # Hermes Workflow Operations
@@ -60,6 +61,7 @@ Use the exact registered tool names and schema field names below. Tool responses
 | Workflow nodes | duplicate_workflow_node      | workflow_id and node_id; copies node data into a new node with a generated ID and offset position.                                                        |
 | Edges          | add_workflow_edge            | workflow_id, source_node_id, source_handle, target_node_id, target_handle; validates ports, exact type equality, and duplicate connections before saving. |
 | Edges          | remove_workflow_edge         | workflow_id and exact edge_id; removes the matching edge and returns the removed edge.                                                                    |
+| Execution      | run_workflow                 | { "workflow_id": "<workflow-uuid>" }; broadcasts a Workflow Studio execution request.                                                                    |
 
 ## Procedure
 
@@ -240,7 +242,18 @@ The formula places the source node ID immediately before the source handle, plac
 
 The handler removes the exact matching edge, updates the workflow timestamp, and preserves every node and every other edge.
 
-### 7. Verify execution and persistence
+### 7. Run a saved workflow
+
+1. Call get_workflow_by_id with the workflow UUID and inspect its nodes and edges.
+2. Confirm the workflow contains a connected execution graph. The Workflow Studio runtime selects nodes referenced by edges and adds start and end boundaries around the connected graph.
+3. Confirm every connected node has a valid Execution class and Python code whose build_output method returns the node result.
+4. Call run_workflow with { "workflow_id": "<workflow-uuid>" }.
+5. Treat success: true and the message Workflow execution request broadcast. as dispatch confirmation. The handler broadcasts the hermes-workflow event workflow.run with payload { "workflow_id": "<workflow-uuid>" }.
+6. The Workflow Studio event consumer receives plugin.hermes-workflow.workflow.run, loads the saved workflow, sends a WORKFLOW_RUN message to the workflow canvas, and invokes the graph.
+7. Observe per-node runtime states: ready, running, success, or error. Inspect node inputs, outputs, and error details in the Workflow Studio canvas.
+8. Use get_workflow_by_id to confirm the executed workflow ID and topology after dispatch. Use the canvas runtime state and node outputs as execution completion evidence.
+
+### 8. Verify execution and persistence
 
 1. Validate Python syntax in the Workflow Studio Execution editor with Validate Code.
 2. Confirm the editor extracts a literal Execution.name, description, category, inputs, outputs, and parameters definition.
@@ -271,6 +284,10 @@ The handler removes the exact matching edge, updates the workflow timestamp, and
 - Edge duplicate detection uses the complete four-field connection tuple, so handle names are part of connection identity.
 - Edge IDs use the exact concatenation formula. Preserve capitalization, underscores, hyphens, and every character in both handle names.
 - Edge removal accepts a workflow UUID and an exact existing edge ID. Read the workflow before removal and use the saved edge record.
+- run_workflow validates a non-empty workflow_id and broadcasts the execution event. Workflow Studio validates saved-workflow loading when it receives the event.
+- A workflow run requires connected nodes. The runtime reports No connected nodes found in workflow. when the edge graph contains no connected node IDs.
+- Upstream outputs use the sourceHandle key and feed the targetHandle key. Each upstream node returns an object-shaped output for downstream handle lookup.
+- The run_workflow success response confirms dispatch. Workflow Studio node statuses and outputs confirm execution progress and completion.
 - Deleting a workflow node also removes its connected edges. Duplicating a node creates data and a new ID, then requires explicit reconnection.
 - Tool handlers persist JSON workflow and node-library data through the plugin storage layer. Use the tools as the write interface and verify through read-back.
 
@@ -286,6 +303,7 @@ Verification is complete when the operation's response and a subsequent read agr
 | Duplicate workflow node       | The returned new node ID appears once with copied data and the expected offset position.                                           |
 | Add workflow edge             | The returned edge and read-back edge share the expected ID, source, source handle, target, target handle, and matching port types. |
 | Remove workflow edge          | The read-back workflow contains no edge with the removed ID, while all unrelated edges remain present.                             |
+| Run workflow                 | run_workflow returns success with the broadcast message, Workflow Studio receives the workflow.run event, and connected nodes reach success with visible outputs. |
 | Delete workflow node          | The read-back workflow contains neither the node nor any edge referencing its ID.                                                  |
 | Execute node                  | Python validation succeeds, build_output returns a value, and the runtime result reports status: "completed".                      |
 

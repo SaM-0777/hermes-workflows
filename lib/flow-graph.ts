@@ -7,6 +7,49 @@ import {
   type WorkflowNode,
 } from "@/lib/node";
 
+export type WorkflowExecutionEvent =
+  | {
+      type: "node.started";
+      nodeId: string;
+      timestamp: number;
+      inputs: Record<string, unknown>;
+    }
+  | {
+      type: "node.completed";
+      nodeId: string;
+      timestamp: number;
+      inputs: Record<string, unknown>;
+      output: unknown;
+      duration: number;
+    }
+  | {
+      type: "node.failed";
+      nodeId: string;
+      timestamp: number;
+      inputs: Record<string, unknown>;
+      error: {
+        message: string;
+        traceback?: string;
+      };
+      duration: number;
+    };
+
+export type WorkflowExecutionLogs = {
+  executionId: string;
+  workflowId: string;
+  status: "completed" | "failed";
+  startedAt: number;
+  completedAt: number;
+  duration: number;
+  events: WorkflowExecutionEvent[];
+  nodes: Record<string, NodeRuntimeState>;
+  outputs: Record<string, unknown>;
+  error?: {
+    message: string;
+    traceback?: string;
+  };
+};
+
 const WorkflowState = Annotation.Root({
   results: Annotation<Record<string, unknown>>({
     reducer: (current, update) => ({
@@ -21,6 +64,7 @@ export async function buildFlowGraph(
   nodes: WorkflowNode[],
   edges: Edge[],
   onNodeStateChange?: (nodeId: string, state: NodeRuntimeState) => void,
+  onExecutionEvent?: (event: WorkflowExecutionEvent) => void,
 ) {
   const connectedIds = new Set<string>();
 
@@ -85,6 +129,13 @@ export async function buildFlowGraph(
           startedAt,
         });
 
+        onExecutionEvent?.({
+          type: "node.started",
+          nodeId: node.id,
+          timestamp: startedAt,
+          inputs,
+        });
+
         const result = await runNode(node, inputs);
         const completedAt = Date.now();
 
@@ -94,6 +145,15 @@ export async function buildFlowGraph(
           output: result.output,
           startedAt,
           completedAt,
+        });
+
+        onExecutionEvent?.({
+          type: "node.completed",
+          nodeId: node.id,
+          timestamp: completedAt,
+          inputs,
+          output: result.output,
+          duration: completedAt - startedAt,
         });
 
         return {
@@ -117,6 +177,19 @@ export async function buildFlowGraph(
           },
           startedAt,
           completedAt,
+        });
+        onExecutionEvent?.({
+          type: "node.failed",
+          nodeId: node.id,
+          timestamp: completedAt,
+          inputs,
+          error: {
+            message: error instanceof Error ? error.message : String(error),
+            ...(error instanceof Error && error.stack
+              ? { traceback: error.stack }
+              : {}),
+          },
+          duration: completedAt - startedAt,
         });
 
         throw error;

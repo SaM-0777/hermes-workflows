@@ -278,6 +278,45 @@ export default function FlowCanvas() {
           }));
         });
         await graph.invoke({ results: {} });
+
+        //const graph = await buildFlowGraph(
+        //  nodes,
+        //  edges,
+        //  (nodeId, state) => {
+        //    setRuntimeState((current) => ({
+        //      ...current,
+        //      [nodeId]: state,
+        //    }));
+        //  },
+        //  (event) => {
+        //    events.push(event);
+        //    window.parent.postMessage(
+        //      {
+        //        protocol: "workflow-studio:v1",
+        //        requestId: executionId,
+        //        type: "WORKFLOW_RUN_PROGRESS",
+        //        payload: {
+        //          executionId,
+        //          workflowId,
+        //          event,
+        //        },
+        //      },
+        //      "*",
+        //    );
+        //  },
+        //);
+
+        //let finalState: { results: Record<string, unknown> } = {
+        //  results: {},
+        //};
+        //for await (const [mode, chunk] of await graph.stream(
+        //  { results: {} },
+        //  { streamMode: ["updates", "values"] },
+        //)) {
+        //  if (mode === "values") {
+        //    finalState = chunk as typeof finalState;
+        //  }
+        //}
       } catch (error) {
         console.error("Workflow failed:", error);
         toast.error(
@@ -293,7 +332,6 @@ export default function FlowCanvas() {
   useEffect(() => {
     const handleMessage = async (event: MessageEvent) => {
       if (event.source !== window.parent) return;
-
       const message = event.data;
 
       if (

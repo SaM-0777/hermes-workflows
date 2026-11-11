@@ -213,6 +213,24 @@ export function WorkflowStudioPage({ ctx }: WorkflowStudioPageProps) {
           return;
         }
 
+        //if (message.type === "WORKFLOW_RUN_PROGRESS") {
+        //  const payload = message.payload;
+        //  if (!isRecord(payload)) {
+        //    throw new Error("Invalid workflow progress payload.");
+        //  }
+        //  host.emitEvent("workflow.run.progress", payload);
+        //  return;
+        //}
+
+        //if (message.type === "WORKFLOW_RUN_RESULT") {
+        //  const payload = message.payload;
+        //  if (!isRecord(payload)) {
+        //    throw new Error("Invalid workflow result payload.");
+        //  }
+        //  host.emitEvent("workflow.run.result", payload);
+        //  return;
+        //}
+
         const result = await handleWorkflowRequest(ctx.files, message);
         if (isRecord(result.workflow) && isWorkflowDocument(result.workflow)) {
           workflowRef.current = result.workflow;
