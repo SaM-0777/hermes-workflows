@@ -1,75 +1,141 @@
-# React + TypeScript + Vite
+# Workflow Studio
 
-This template provides a minimal setup to get React working in Vite with HMR and some ESLint rules.
+Workflow Studio is a general-purpose, agent-based workflow platform for building and executing workflows for any task. Describe what you want to accomplish, and Hermes can create the workflow by configuring components, connecting their inputs and outputs, and organizing them into an executable graph.
 
-Currently, two official plugins are available:
+Complex tasks often involve multiple steps, dependencies, and parallel operations. Workflow Studio provides a visual node-based editor where you can inspect, modify, and manage workflows, with support for reusable components, custom code, typed connections, and conditional execution.
 
-- [@vitejs/plugin-react](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react) uses [Oxc](https://oxc.rs)
-- [@vitejs/plugin-react-swc](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react-swc) uses [SWC](https://swc.rs/)
 
-## React Compiler
+## Showcase
 
-The React Compiler is not enabled on this template because of its impact on dev & build performances. To add it, see [this documentation](https://react.dev/learn/react-compiler/installation).
+Explore workflows built and executed with Hermes Workflow Studio. Each showcase includes screenshots, the original prompt, and the workflow JSON to import and run.
 
-## Expanding the ESLint configuration
+### 1. Sales Data Analysis Pipeline
 
-If you are developing a production application, we recommend updating the configuration to enable type-aware lint rules:
+A complete data analysis pipeline that generates sample sales records, validates and cleans data, performs parallel revenue and customer analysis, and combines the results into a final business report.
 
-```js
-export default defineConfig([
-  globalIgnores(['dist']),
-  {
-    files: ['**/*.{ts,tsx}'],
-    extends: [
-      // Other configs...
+![Sales Data Analysis](./demo/demo_sales_1.png)
 
-      // Remove tseslint.configs.recommended and replace with this
-      tseslint.configs.recommendedTypeChecked,
-      // Alternatively, use this for stricter rules
-      tseslint.configs.strictTypeChecked,
-      // Optionally, add this for stylistic rules
-      tseslint.configs.stylisticTypeChecked,
+- [Workflow JSON](./demo/sales-analysis.json)
+- [View Prompt](./demo/prompts.md#sales-data-analysis-pipeline)
 
-      // Other configs...
-    ],
-    languageOptions: {
-      parserOptions: {
-        project: ['./tsconfig.node.json', './tsconfig.app.json'],
-        tsconfigRootDir: import.meta.dirname,
-      },
-      // other options...
-    },
-  },
-])
+---
 
+### 2. Earthquake Impact Assessment
+
+A real-world disaster assessment workflow combining USGS earthquake data and NASA satellite imagery to analyze seismic activity, geographic exposure, and available impact estimates.
+
+![Earthquake Assessment 1](./demo/demo_earthquake_1.png)
+![Earthquake Assessment 2](./demo/demo_earthquake_2.png)
+
+- [Workflow JSON](./demo/earthquake-assessment.json)
+- [View Prompt](./demo/prompts.md#earthquake-impact-assessment)
+
+---
+
+### 3. Neutrino Oscillations & Lorentz Invariance Analysis
+
+A scientific research workflow comparing publicly available KM3NeT and IceCube neutrino datasets through parallel analysis branches, combining experimental findings into a structured research report.
+
+![Neutrino Analysis 1](./demo/demo_neutrino_1.png)
+![Neutrino Analysis 2](./demo/demo_neutrino_2.png)
+
+- [Workflow JSON](./demo/neutrino-analysis.json)
+- [View Prompt](./demo/prompts.md#neutrino-oscillations--lorentz-invariance-a-comparative-km3net-and-icecube-analysis)
+
+---
+
+##### Warning 
+> Applications limited to user's imaginations.
+
+---
+
+## Getting Started
+
+### Installation
+
+```bash
+hermes plugins install hermes-workflow
 ```
 
-You can also install [eslint-plugin-react-x](https://npmx.dev/package/eslint-plugin-react-x) and [eslint-plugin-react-dom](https://npmx.dev/package/eslint-plugin-react-dom) for React-specific lint rules:
+After installation, enable the plugin using Hermes's plugin management interface or CLI.
 
-```js
-// eslint.config.js
-import reactX from 'eslint-plugin-react-x'
-import reactDom from 'eslint-plugin-react-dom'
+### First workflow
 
-export default defineConfig([
-  globalIgnores(['dist']),
-  {
-    files: ['**/*.{ts,tsx}'],
-    extends: [
-      // Other configs...
-      // Enable lint rules for React
-      reactX.configs['recommended-typescript'],
-      // Enable lint rules for React DOM
-      reactDom.configs.recommended,
-    ],
-    languageOptions: {
-      parserOptions: {
-        project: ['./tsconfig.node.json', './tsconfig.app.json'],
-        tsconfigRootDir: import.meta.dirname,
-      },
-      // other options...
-    },
-  },
-])
+Once the plugin is installed and enabled:
 
-```
+1. Open Workflow Studio in Hermes Desktop.
+2. Create a new workflow or ask Hermes to create one.
+3. Add nodes to the graph.
+4. Configure node inputs, outputs, parameters, and Python execution logic.
+5. Connect compatible ports.
+6. Save the workflow.
+7. Execute it from Workflow Studio or ask Hermes to run the saved workflow.
+
+For example, you can ask Hermes:
+
+> Build a disaster-response workflow that analyzes incoming satellite imagery, detects damaged infrastructure and blocked roads, identifies affected populations, and prioritizes emergency response locations. Combine the findings to generate a response plan with resource allocation and recommended rescue routes. Save the workflow and execute it.
+
+Hermes can use the registered workflow tools to construct the graph.
+
+---
+
+## Security and Important Disclosures
+
+Workflow Studio is a development-oriented workflow execution environment. Users should understand how node execution works before running workflows.
+
+### Python code execution
+
+Workflow nodes contain Python source code that is compiled and executed by the plugin-host backend.
+
+The backend uses Python's `compile()` and `exec()` to load the node's `Execution` class and invokes its `build_output()` method.
+
+**This is not a Python sandbox.**
+
+The execution endpoint does not currently provide an isolated operating-system process or container for each node. Python code executes within the plugin backend's runtime environment and may have access to capabilities available to that process.
+
+Only run workflows and node definitions from sources you trust. Do not execute untrusted Python code.
+
+### Network access
+
+Node execution code can use network capabilities available to its Python runtime. Node authors should disclose and explain any external services their nodes contact.
+
+### Data and persistence
+
+Workflow and reusable node definitions are stored through the plugin's storage layer. They persist independently of the active editor session.
+
+Node execution receives the connected upstream outputs as inputs. The plugin's execution endpoint currently passes empty parameter and context dictionaries to the node implementation.
+
+### Credentials
+
+Do not hardcode API keys, passwords, access tokens, or other secrets into node source code or workflow definitions.
+
+Any node that requires external credentials should use an appropriate secure credential integration.
+
+### Background execution
+
+The workflow execution request is dispatched through Hermes Desktop events. The current implementation does not provide a separate durable background execution service.
+
+---
+
+## Compatibility
+
+Workflow Studio requires Hermes Agent `0.23.0` or newer.
+
+The plugin uses Hermes's public plugin registration APIs and Desktop Plugin SDK integration points.
+
+It does not require modifications to Hermes core source code or its built-in Desktop interface.
+
+---
+
+## Contributing
+
+Contributions, bug reports, and feature suggestions are welcome.
+Please open an issue or pull request in the repository:
+
+https://github.com/SaM-0777/hermes-workflows
+
+---
+
+## License
+
+This project is licensed under the MIT License
