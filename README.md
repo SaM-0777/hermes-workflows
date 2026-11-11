@@ -4,6 +4,11 @@ Workflow Studio is a general-purpose, agent-based workflow platform for building
 
 Complex tasks often involve multiple steps, dependencies, and parallel operations. Workflow Studio provides a visual node-based editor where you can inspect, modify, and manage workflows, with support for reusable components, custom code, typed connections, and conditional execution.
 
+---
+
+> **Beta:** Workflow Studio is currently in beta and is available on macOS only. Support for other platforms will be available in upcoming updates.
+
+---
 
 ## Showcase
 
