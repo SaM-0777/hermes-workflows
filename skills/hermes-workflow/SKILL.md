@@ -1,6 +1,6 @@
 ---
 name: hermes-workflow
-description: description: Build and execute general-purpose, agent-driven workflows to automate complex, multi-step tasks across tools, services, and systems.
+description: Build and execute general-purpose, agent-driven workflows to automate complex, multi-step tasks across tools, services, and systems.
 version: 0.0.1
 author: SaM-0777
 license: MIT
@@ -75,7 +75,7 @@ Use the exact registered tool names and schema field names below. Tool responses
 
 1. Build data.general with name, description, and category. Node names start with a letter and use letters, numbers, underscores, or hyphens; names are 1–64 characters. Descriptions are at most 500 characters.
 2. Build data.io with inputs and outputs. Each port has an exact name and one of Any, String, Number, Boolean, Object, Array, Image, Audio, Video, or File as its UI type.
-3. Build data.config.parameters as a list of objects containing name, type, and string defaultValue. Parameter names are unique within the configuration.
+3. Build data.config.parameters as a list of objects containing name, type, and string defaultValue. Parameter names are unique within the configuration. The string defaultValue must encode a value that matches the selected parameter type. Use Number values such as 5, Boolean values such as true or false, String values as their literal text, Array values as valid JSON arrays such as [1, 2, 3], and Object values as valid JSON objects such as {"key": "value"}.
 4. Build data.execution.pythonCode with a complete Python source string containing the required Execution class described below.
 5. Call create_node for a new reusable library node. Call update_node with the saved node UUID and complete updated data for an existing library node.
 6. Use get_node_by_id after the write to confirm the persisted definition.
@@ -177,7 +177,19 @@ parameters: dict = {
    }
 ```
 
-The Python-to-UI type mapping is Any → Any, str → String, float or int → Number, bool → Boolean, dict → Object, list → Array, and Image, Audio, Video, File → their matching UI types. Use matching representations in both directions whenever metadata changes.
+The persisted configuration schema stores defaultValue as a string while requiring its encoded value to match the selected type. Use these representations:
+
+| Selected parameter type | Correct data.config.parameters defaultValue | Execution.parameters default |
+| --- | --- | --- |
+| Number | "5" | 5 |
+| Boolean | "true" or "false" | True or False |
+| String | "hello" | "hello" |
+| Array | "[1, 2, 3]" | [1, 2, 3] |
+| Object | "{\"key\": \"value\"}" | {"key": "value"} |
+| Any | A value encoded as valid JSON when structured data is required | The corresponding Python value |
+| Image, Audio, Video, File | A string reference or path value | The corresponding runtime value |
+
+Before calling create_node, add_node_to_workflow, update_node, or update_workflow_node, parse and type-check each defaultValue according to its selected type. Then mirror the parsed value in Execution.parameters using the matching Python type. The Python-to-UI type mapping is Any → Any, str → String, float or int → Number, bool → Boolean, dict → Object, list → Array, and Image, Audio, Video, File → their matching UI types. Use matching representations in both directions whenever metadata changes.
 
 ### 5. Connect compatible nodes
 
@@ -245,8 +257,10 @@ The handler removes the exact matching edge, updates the workflow timestamp, and
 - Workflow IDs are canonical UUID strings. Read the ID from create_workflow, list_workflows, or get_workflow_by_id.
 - Saved node IDs and workflow node IDs represent different objects. A saved library ID selects reusable data; a workflow node ID identifies the instance inside a workflow.
 - create_node and add_node_to_workflow require valid general, io, config, and execution sections.
-- The current add_node_to_workflow handler routes its execution argument through the config validator, while its schema describes execution.pythonCode. Treat the schema and handler as an implementation mismatch, inspect the live response, and use add_library_node_to_workflow or update_workflow_node for a verified Python-backed node path.
+- The current add_node_to_workflow handler routes its execution argument through the config validator, while its schema describes execution.pythonCode. Treat the schema and handler as an implementation mismatch, inspect the live response, and use add_library_node_to_workflow or update_workflow_node for a verified Python-backed node path. A working direct path: pass execution as {"pythonCode": ..., "parameters": []} so the config validator's array check passes, then call update_workflow_node with execution {"pythonCode": ...} to strip the placeholder key.
 - update_node receives complete replacement data. update_workflow_node receives selected sections and preserves the remaining sections.
+- Parameter defaultValue is serialized as a string in the tool schema and carries a type-specific value. Match Number with numeric text, Boolean with true or false, String with text, Array with valid JSON array text, and Object with valid JSON object text.
+- The execution class stores the same parameter default as a native Python value. Keep data.config.parameters.defaultValue and Execution.parameters[name].default synchronized.
 - Port names are unique within each input or output direction and are matched exactly when edges are created.
 - Python type metadata uses the Python vocabulary while persisted JSON uses the UI vocabulary. Keep the mapping synchronized.
 - Python metadata values are literal class attributes so the editor can extract them through AST parsing.
