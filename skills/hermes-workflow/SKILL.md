@@ -306,5 +306,3 @@ Verification is complete when the operation's response and a subsequent read agr
 | Run workflow                 | run_workflow returns success with the broadcast message, Workflow Studio receives the workflow.run event, and connected nodes reach success with visible outputs. |
 | Delete workflow node          | The read-back workflow contains neither the node nor any edge referencing its ID.                                                  |
 | Execute node                  | Python validation succeeds, build_output returns a value, and the runtime result reports status: "completed".                      |
-
-The plugin registers this skill by scanning skills/hermes-workflow/SKILL.md from its **init**.py. The plugin metadata targets macOS and requires Hermes >=0.23.0.
