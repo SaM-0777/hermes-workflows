@@ -26,6 +26,7 @@ import {
   useNodeRuntimeState,
   WorkflowRuntimeProvider,
 } from "@/providers/workflow-provider";
+import { toast } from "sonner";
 
 function WorkflowBaseNode({ id, data, selected }: NodeProps<WorkflowNode>) {
   const runtime = useNodeRuntimeState(id);
@@ -284,8 +285,12 @@ export default function FlowCanvas() {
           "*",
         );
       });
+      toast.success("Workflow saved successfully");
     } catch (error) {
-      console.error("Workflow save failed:", error);
+      const err = error as Error;
+      toast.success(
+        `Failed to save workflow. Error ${err?.message || "Unknown error occurred"}`,
+      );
     } finally {
       setIsSaving(false);
     }
