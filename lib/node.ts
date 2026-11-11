@@ -23,6 +23,26 @@ export const dataTypes = [
   "File",
 ] as const;
 
+export function getPortValue(
+  values: unknown,
+  name: string,
+): { available: boolean; value: unknown } {
+  if (
+    typeof values !== "object" ||
+    values === null ||
+    Array.isArray(values) ||
+    !Object.prototype.hasOwnProperty.call(values, name)
+  ) {
+    return { available: false, value: undefined };
+  }
+
+  const value = (values as Record<string, unknown>)[name];
+  return {
+    available: value !== undefined,
+    value,
+  };
+}
+
 export const generalSchema = z.object({
   name: z
     .string()
@@ -212,3 +232,19 @@ export async function runNode(
     );
   });
 }
+
+export type NodeStatus = "idle" | "ready" | "running" | "success" | "error";
+export type NodeExecutionError = {
+  type?: string;
+  message: string;
+  traceback?: string;
+};
+export type NodeRuntimeState = {
+  status: NodeStatus;
+  inputs?: Record<string, unknown>;
+  output?: unknown;
+  error?: NodeExecutionError;
+  startedAt?: number;
+  completedAt?: number;
+};
+export type WorkflowRuntimeState = Record<string, NodeRuntimeState>;

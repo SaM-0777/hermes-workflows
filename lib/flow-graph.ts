@@ -1,6 +1,54 @@
 import { Annotation, END, START, StateGraph } from "@langchain/langgraph";
 import type { Edge } from "@xyflow/react";
-import { isRecord, runNode, type WorkflowNode } from "@/lib/node";
+import {
+  isRecord,
+  runNode,
+  type NodeRuntimeState,
+  type WorkflowNode,
+} from "@/lib/node";
+
+export type WorkflowExecutionEvent =
+  | {
+      type: "node.started";
+      nodeId: string;
+      timestamp: number;
+      inputs: Record<string, unknown>;
+    }
+  | {
+      type: "node.completed";
+      nodeId: string;
+      timestamp: number;
+      inputs: Record<string, unknown>;
+      output: unknown;
+      duration: number;
+    }
+  | {
+      type: "node.failed";
+      nodeId: string;
+      timestamp: number;
+      inputs: Record<string, unknown>;
+      error: {
+        message: string;
+        traceback?: string;
+      };
+      duration: number;
+    };
+
+export type WorkflowExecutionLogs = {
+  executionId: string;
+  workflowId: string;
+  status: "completed" | "failed";
+  startedAt: number;
+  completedAt: number;
+  duration: number;
+  events: WorkflowExecutionEvent[];
+  nodes: Record<string, NodeRuntimeState>;
+  outputs: Record<string, unknown>;
+  error?: {
+    message: string;
+    traceback?: string;
+  };
+};
 
 const WorkflowState = Annotation.Root({
   results: Annotation<Record<string, unknown>>({
@@ -12,7 +60,12 @@ const WorkflowState = Annotation.Root({
   }),
 });
 
-export async function buildFlowGraph(nodes: WorkflowNode[], edges: Edge[]) {
+export async function buildFlowGraph(
+  nodes: WorkflowNode[],
+  edges: Edge[],
+  onNodeStateChange?: (nodeId: string, state: NodeRuntimeState) => void,
+  onExecutionEvent?: (event: WorkflowExecutionEvent) => void,
+) {
   const connectedIds = new Set<string>();
 
   for (const edge of edges) {
@@ -38,45 +91,109 @@ export async function buildFlowGraph(nodes: WorkflowNode[], edges: Edge[]) {
 
   for (const node of connectedNodes) {
     graph.addNode(node.id, async (state) => {
+      const startedAt = Date.now();
       const inputs: Record<string, unknown> = {};
-      const incomingEdges = connectedEdges.filter(
-        (edge) => edge.target === node.id,
-      );
 
-      for (const edge of incomingEdges) {
-        const sourceHandle = edge.sourceHandle;
-        const targetHandle = edge.targetHandle;
-        if (!sourceHandle || !targetHandle) {
-          throw new Error(
-            `Missing handle information for connection ${edge.source} → ${edge.target}`,
-          );
+      try {
+        const incomingEdges = connectedEdges.filter(
+          (edge) => edge.target === node.id,
+        );
+
+        for (const edge of incomingEdges) {
+          const sourceHandle = edge.sourceHandle;
+          const targetHandle = edge.targetHandle;
+          if (!sourceHandle || !targetHandle) {
+            throw new Error(
+              `Missing handle information for connection ${edge.source} → ${edge.target}`,
+            );
+          }
+
+          const sourceResult = state.results[edge.source];
+          if (!isRecord(sourceResult) || !isRecord(sourceResult.output)) {
+            throw new Error(
+              `Output from upstream node "${edge.source}" is unavailable.`,
+            );
+          }
+          if (!(sourceHandle in sourceResult.output)) {
+            throw new Error(
+              `Output "${sourceHandle}" not found on node "${edge.source}".`,
+            );
+          }
+
+          inputs[targetHandle] = sourceResult.output[sourceHandle];
         }
 
-        const sourceResult = state.results[edge.source];
-        if (!isRecord(sourceResult) || !isRecord(sourceResult.output)) {
-          throw new Error(
-            `Output from upstream node "${edge.source}" is unavailable.`,
-          );
-        }
-        if (!(sourceHandle in sourceResult.output)) {
-          throw new Error(
-            `Output "${sourceHandle}" not found on node "${edge.source}".`,
-          );
-        }
+        onNodeStateChange?.(node.id, {
+          status: "running",
+          inputs,
+          startedAt,
+        });
 
-        inputs[targetHandle] = sourceResult.output[sourceHandle];
-      }
+        onExecutionEvent?.({
+          type: "node.started",
+          nodeId: node.id,
+          timestamp: startedAt,
+          inputs,
+        });
 
-      const result = await runNode(node, inputs);
+        const result = await runNode(node, inputs);
+        const completedAt = Date.now();
 
-      return {
-        results: {
-          [node.id]: {
-            status: result.status,
-            output: result.output,
+        onNodeStateChange?.(node.id, {
+          status: "success",
+          inputs,
+          output: result.output,
+          startedAt,
+          completedAt,
+        });
+
+        onExecutionEvent?.({
+          type: "node.completed",
+          nodeId: node.id,
+          timestamp: completedAt,
+          inputs,
+          output: result.output,
+          duration: completedAt - startedAt,
+        });
+
+        return {
+          results: {
+            [node.id]: {
+              status: result.status,
+              output: result.output,
+            },
           },
-        },
-      };
+        };
+      } catch (error) {
+        const completedAt = Date.now();
+        onNodeStateChange?.(node.id, {
+          status: "error",
+          inputs,
+          error: {
+            message: error instanceof Error ? error.message : String(error),
+            ...(error instanceof Error && error.stack
+              ? { traceback: error.stack }
+              : {}),
+          },
+          startedAt,
+          completedAt,
+        });
+        onExecutionEvent?.({
+          type: "node.failed",
+          nodeId: node.id,
+          timestamp: completedAt,
+          inputs,
+          error: {
+            message: error instanceof Error ? error.message : String(error),
+            ...(error instanceof Error && error.stack
+              ? { traceback: error.stack }
+              : {}),
+          },
+          duration: completedAt - startedAt,
+        });
+
+        throw error;
+      }
     });
   }
 

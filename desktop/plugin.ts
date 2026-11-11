@@ -1,7 +1,4 @@
-import {
-  ROUTES_AREA,
-  SIDEBAR_NAV_AREA,
-} from "@hermes/plugin-sdk";
+import { ROUTES_AREA, SIDEBAR_NAV_AREA } from "@hermes/plugin-sdk";
 import { jsx } from "react/jsx-runtime";
 import { WorkflowLibraryPage } from "./workflows/ui/workflow-library";
 import { WorkflowStudioPage } from "./workflows/ui/workflow-studio";
@@ -13,7 +10,7 @@ interface PluginContext {
 }
 
 export default {
-  id: "workflow",
+  id: "hermes-workflow",
   name: "Workflow Studio",
 
   register(ctx: PluginContext) {

@@ -1,8 +1,5 @@
 // desktop/plugin.ts
-import {
-  ROUTES_AREA,
-  SIDEBAR_NAV_AREA
-} from "@hermes/plugin-sdk";
+import { ROUTES_AREA, SIDEBAR_NAV_AREA } from "@hermes/plugin-sdk";
 import { jsx as jsx12 } from "react/jsx-runtime";
 
 // desktop/workflows/ui/workflow-library.tsx
@@ -951,6 +948,26 @@ function WorkflowStudioPage({ ctx }) {
     return () => window.clearTimeout(timer);
   }, [name, nameDraft, saveName, workflow]);
   useEffect3(() => {
+    const unsubscribe = host3.onEvent("plugin.hermes-workflow.workflow.run", (event) => {
+      const payload = event.payload;
+      if (!isRecord(payload))
+        return;
+      const workflowId2 = payload.workflow_id;
+      if (typeof workflowId2 !== "string" || !workflowId2.trim())
+        return;
+      const frameWindow = frameRef.current?.contentWindow;
+      if (!frameWindow)
+        return;
+      frameWindow.postMessage({
+        protocol: "workflow-studio:v1",
+        requestId: crypto.randomUUID(),
+        type: "WORKFLOW_RUN",
+        payload: { workflowId: workflowId2 }
+      }, "*");
+    });
+    return unsubscribe;
+  }, []);
+  useEffect3(() => {
     const handleMessage = async (event) => {
       const frameWindow = frameRef.current?.contentWindow;
       if (!frameWindow || event.source !== frameWindow)
@@ -1057,7 +1074,7 @@ function WorkflowStudioPage({ ctx }) {
 
 // desktop/plugin.ts
 var plugin_default = {
-  id: "workflow",
+  id: "hermes-workflow",
   name: "Workflow Studio",
   register(ctx) {
     ctx.registerMany([

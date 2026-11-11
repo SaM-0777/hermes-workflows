@@ -142,6 +142,34 @@ export function WorkflowStudioPage({ ctx }: WorkflowStudioPageProps) {
   }, [name, nameDraft, saveName, workflow]);
 
   useEffect(() => {
+    const unsubscribe = host.onEvent(
+      "plugin.hermes-workflow.workflow.run",
+      (event: { payload?: unknown }) => {
+        const payload = event.payload;
+        if (!isRecord(payload)) return;
+
+        const workflowId = payload.workflow_id;
+        if (typeof workflowId !== "string" || !workflowId.trim()) return;
+
+        const frameWindow = frameRef.current?.contentWindow;
+        if (!frameWindow) return;
+
+        frameWindow.postMessage(
+          {
+            protocol: "workflow-studio:v1",
+            requestId: crypto.randomUUID(),
+            type: "WORKFLOW_RUN",
+            payload: { workflowId },
+          },
+          "*",
+        );
+      },
+    );
+
+    return unsubscribe;
+  }, []);
+
+  useEffect(() => {
     const handleMessage = async (event: MessageEvent) => {
       const frameWindow = frameRef.current?.contentWindow;
       if (!frameWindow || event.source !== frameWindow) return;
@@ -184,6 +212,24 @@ export function WorkflowStudioPage({ ctx }: WorkflowStudioPageProps) {
 
           return;
         }
+
+        //if (message.type === "WORKFLOW_RUN_PROGRESS") {
+        //  const payload = message.payload;
+        //  if (!isRecord(payload)) {
+        //    throw new Error("Invalid workflow progress payload.");
+        //  }
+        //  host.emitEvent("workflow.run.progress", payload);
+        //  return;
+        //}
+
+        //if (message.type === "WORKFLOW_RUN_RESULT") {
+        //  const payload = message.payload;
+        //  if (!isRecord(payload)) {
+        //    throw new Error("Invalid workflow result payload.");
+        //  }
+        //  host.emitEvent("workflow.run.result", payload);
+        //  return;
+        //}
 
         const result = await handleWorkflowRequest(ctx.files, message);
         if (isRecord(result.workflow) && isWorkflowDocument(result.workflow)) {
