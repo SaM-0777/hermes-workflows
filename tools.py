@@ -993,8 +993,8 @@ def remove_workflow_edge(params, **kwargs):
         return _error(str(exc))
 
 
-def run_workflow(params, **kwargs):
-    from hermes_cli.plugin_events import broadcast_plugin_event
+def request_run_workflow(params, **kwargs):
+    from hermes_cli.plugin_events import broadcast_plugin_event # pyright: ignore[reportMissingImports]
 
     workflow_id = params.get("workflow_id")
     if not isinstance(workflow_id, str) or not workflow_id.strip():

@@ -1,11 +1,51 @@
+import json
 from pathlib import Path
 
 TOOLSET = "hermes-workflow"
 
 
+def require_workflow_approval(tool_name, args, tools):
+    if tool_name != "request_run_workflow":
+        return None
+    try:
+        workflow_id = tools._validate_workflow_id(args.get("workflow_id"))
+        workflow = tools._read_workflow(workflow_id)
+    except (ValueError, OSError, json.JSONDecodeError) as exc:
+        return {
+            "action": "block",
+            "message": f"Cannot verify workflow before execution: {exc}",
+        }
+
+    sections = []
+    for index, node in enumerate(workflow["nodes"], start=1):
+        data = node.get("data", {})
+        general = data.get("general", {})
+        execution = data.get("execution", {})
+        node_name = general.get("name", f"Node {index}")
+        python_code = execution.get("pythonCode", "")
+        sections.append(
+            f"Node: {node_name}\n" f"{python_code or '(No Python code configured)'}"
+        )
+    message = (
+        f"Workflow: {workflow['name']}\n"
+        f"Workflow ID: {workflow_id}\n\n"
+        "Review the following node code before approving execution:\n\n"
+        + "\n\n".join(sections)
+    )
+    return {
+        "action": "approve",
+        "message": message,
+    }
+
+
 def register(ctx) -> None:
     from . import schemas as s
     from . import tools as t
+
+    ctx.register_hook(
+        "pre_tool_call",
+        lambda tool_name, args, **kwargs: require_workflow_approval(tool_name, args, t),
+    )
 
     # Skills
     skills_dir = Path(__file__).parent / "skills"
@@ -35,7 +75,7 @@ def register(ctx) -> None:
         (s.DUPLICATE_WORKFLOW_NODE, t.duplicate_workflow_node),
         (s.ADD_WORKFLOW_EDGE, t.add_workflow_edge),
         (s.REMOVE_WORKFLOW_EDGE, t.remove_workflow_edge),
-        (s.RUN_WORKFLOW, t.run_workflow),
+        (s.REQUEST_RUN_WORKFLOW, t.request_run_workflow),
     )
     for schema, handler in tools:
         ctx.register_tool(

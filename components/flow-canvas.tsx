@@ -27,6 +27,7 @@ import {
   WorkflowRuntimeProvider,
 } from "@/providers/workflow-provider";
 import { toast } from "sonner";
+import { WorkflowApprovalDialog } from "./approval-dialog";
 
 function WorkflowBaseNode({ id, data, selected }: NodeProps<WorkflowNode>) {
   const runtime = useNodeRuntimeState(id);
@@ -55,6 +56,7 @@ export default function FlowCanvas() {
   const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
   const [isSaving, setIsSaving] = useState(false);
   const [runtimeState, setRuntimeState] = useState<WorkflowRuntimeState>({});
+  const [pendingApproval, setPendingApproval] = useState<boolean>(false);
 
   const isValidConnection: IsValidConnection<Edge> = useCallback(
     (connection) => {
@@ -278,45 +280,6 @@ export default function FlowCanvas() {
           }));
         });
         await graph.invoke({ results: {} });
-
-        //const graph = await buildFlowGraph(
-        //  nodes,
-        //  edges,
-        //  (nodeId, state) => {
-        //    setRuntimeState((current) => ({
-        //      ...current,
-        //      [nodeId]: state,
-        //    }));
-        //  },
-        //  (event) => {
-        //    events.push(event);
-        //    window.parent.postMessage(
-        //      {
-        //        protocol: "workflow-studio:v1",
-        //        requestId: executionId,
-        //        type: "WORKFLOW_RUN_PROGRESS",
-        //        payload: {
-        //          executionId,
-        //          workflowId,
-        //          event,
-        //        },
-        //      },
-        //      "*",
-        //    );
-        //  },
-        //);
-
-        //let finalState: { results: Record<string, unknown> } = {
-        //  results: {},
-        //};
-        //for await (const [mode, chunk] of await graph.stream(
-        //  { results: {} },
-        //  { streamMode: ["updates", "values"] },
-        //)) {
-        //  if (mode === "values") {
-        //    finalState = chunk as typeof finalState;
-        //  }
-        //}
       } catch (error) {
         console.error("Workflow failed:", error);
         toast.error(
@@ -350,7 +313,7 @@ export default function FlowCanvas() {
         setNodes(workflow.nodes);
         setEdges(workflow.edges);
 
-        await executeRun(workflow.nodes, workflow.edges);
+        setPendingApproval(true);
       } catch (error) {
         console.error("Workflow execution request failed:", error);
         toast.error(
@@ -364,6 +327,9 @@ export default function FlowCanvas() {
     return () => window.removeEventListener("message", handleMessage);
   }, [isRunning, setNodes, setEdges, executeRun]);
 
+  const handleRun = () => {
+    setPendingApproval(true);
+  };
   const handleStop = () => {
     setIsRunning(false);
   };
@@ -503,7 +469,7 @@ export default function FlowCanvas() {
               <Button
                 size="sm"
                 disabled={isRunning}
-                onClick={() => executeRun(nodes, edges)}
+                onClick={handleRun}
                 className="gap-2 shadow-sm"
               >
                 <Play className="size-3.5 fill-current" />
@@ -535,6 +501,12 @@ export default function FlowCanvas() {
         <DeleteWorkflow
           open={deleteDialogOpen}
           setOpenChange={setDeleteDialogOpen}
+        />
+
+        <WorkflowApprovalDialog
+          open={pendingApproval}
+          onOpenChange={setPendingApproval}
+          onApprove={() => executeRun(nodes, edges)}
         />
       </WorkflowRuntimeProvider>
     </main>

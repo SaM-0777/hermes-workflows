@@ -653,9 +653,9 @@ REMOVE_WORKFLOW_EDGE = {
     },
 }
 
-RUN_WORKFLOW = {
-    "name": "run_workflow",
-    "description": "Run a saved workflow in Workflow Studio using its workflow ID.",
+REQUEST_RUN_WORKFLOW = {
+    "name": "request_run_workflow",
+    "description": "Request user approval to Run a saved workflow in Workflow Studio using its workflow ID.",
     "parameters": {
         "type": "object",
         "properties": {
