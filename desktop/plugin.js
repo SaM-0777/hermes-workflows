@@ -744,7 +744,6 @@ function WorkflowStudioPage({ ctx }) {
   const workflowRef = useRef2(null);
   const hashQuery = window.location.hash.includes("?") ? window.location.hash.slice(window.location.hash.indexOf("?")) : "";
   const workflowId = new URLSearchParams(hashQuery).get("workflowId") ?? new URLSearchParams(window.location.search).get("workflowId");
-  const studioUrl = workflowId ? `${STUDIO_URL}/?workflowId=${encodeURIComponent(workflowId)}` : STUDIO_URL;
   const name = workflowId ? `workflow-${workflowId}` : "Workflow Studio";
   const [workflow, setWorkflow] = useState3(null);
   const [nameDraft, setNameDraft] = useState3(name);
@@ -847,9 +846,21 @@ function WorkflowStudioPage({ ctx }) {
       if (!frameWindow || event.source !== frameWindow)
         return;
       const message = event.data;
-      if (!isRecord(message) || !isWorkflowMessage(message))
+      if (!isRecord(message))
         return;
       try {
+        if (message.protocol === "workflow-studio:v1" && message.type === "READY") {
+          if (!workflowId)
+            return;
+          frameWindow.postMessage({
+            protocol: "workflow-studio:v1",
+            type: "INIT",
+            payload: { workflowId }
+          }, "*");
+          return;
+        }
+        if (!isWorkflowMessage(message))
+          return;
         if (message.type === "NAVIGATE") {
           const path = message.payload?.path;
           if (typeof path === "string" && path.startsWith("/")) {
@@ -894,7 +905,7 @@ function WorkflowStudioPage({ ctx }) {
     };
     window.addEventListener("message", handleMessage);
     return () => window.removeEventListener("message", handleMessage);
-  }, [ctx]);
+  }, [ctx, workflowId]);
   return /* @__PURE__ */ jsxs9("div", {
     className: "flex h-full min-h-0 w-full flex-col overflow-hidden",
     children: [
@@ -937,7 +948,7 @@ function WorkflowStudioPage({ ctx }) {
         className: "relative min-h-0 flex-1",
         children: /* @__PURE__ */ jsx11(SandboxedFrame, {
           ref: frameRef,
-          src: studioUrl,
+          src: STUDIO_URL,
           title: "Workflow Studio",
           className: "block size-full border-0"
         })

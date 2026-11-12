@@ -42,9 +42,9 @@ export function WorkflowStudioPage({ ctx }: WorkflowStudioPageProps) {
   const workflowId =
     new URLSearchParams(hashQuery).get("workflowId") ??
     new URLSearchParams(window.location.search).get("workflowId");
-  const studioUrl = workflowId
-    ? `${STUDIO_URL}/?workflowId=${encodeURIComponent(workflowId)}`
-    : STUDIO_URL;
+  //const studioUrl = workflowId
+  //  ? `${STUDIO_URL}/?workflowId=${encodeURIComponent(workflowId)}`
+  //  : STUDIO_URL;
 
   const name = workflowId ? `workflow-${workflowId}` : "Workflow Studio";
   const [workflow, setWorkflow] = useState<WorkflowDocument | null>(null);
@@ -169,9 +169,28 @@ export function WorkflowStudioPage({ ctx }: WorkflowStudioPageProps) {
       if (!frameWindow || event.source !== frameWindow) return;
 
       const message: unknown = event.data;
-      if (!isRecord(message) || !isWorkflowMessage(message)) return;
+      if (!isRecord(message)) return;
 
       try {
+        if (
+          message.protocol === "workflow-studio:v1" &&
+          message.type === "READY"
+        ) {
+          if (!workflowId) return;
+          frameWindow.postMessage(
+            {
+              protocol: "workflow-studio:v1",
+              type: "INIT",
+              payload: { workflowId },
+            },
+            "*",
+          );
+
+          return;
+        }
+
+        if (!isWorkflowMessage(message)) return;
+
         if (message.type === "NAVIGATE") {
           const path = message.payload?.path;
           if (typeof path === "string" && path.startsWith("/")) {
@@ -246,7 +265,7 @@ export function WorkflowStudioPage({ ctx }: WorkflowStudioPageProps) {
 
     window.addEventListener("message", handleMessage);
     return () => window.removeEventListener("message", handleMessage);
-  }, [ctx]);
+  }, [ctx, workflowId]);
 
   return (
     <div className="flex h-full min-h-0 w-full flex-col overflow-hidden">
@@ -289,7 +308,7 @@ export function WorkflowStudioPage({ ctx }: WorkflowStudioPageProps) {
       <div className="relative min-h-0 flex-1">
         <SandboxedFrame
           ref={frameRef}
-          src={studioUrl}
+          src={STUDIO_URL}
           title="Workflow Studio"
           className="block size-full border-0"
         />
