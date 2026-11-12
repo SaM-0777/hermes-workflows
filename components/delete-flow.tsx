@@ -10,6 +10,8 @@ import {
   AlertDialogTitle,
 } from "./ui/alert-dialog";
 import { navigateTo } from "@/lib/navigation";
+import { getWorkflowId, sessionFields } from "@/lib/studio-session";
+import { randomId } from "@/lib/random-id";
 
 export interface DeleteWorkflowProps {
   open: boolean;
@@ -24,9 +26,9 @@ export default function DeleteWorkflow({
   const [deleteError, setDeleteError] = useState<string | null>(null);
 
   const confirmDelete = async () => {
-    const workflowId = new URLSearchParams(window.location.search).get(
-      "workflowId",
-    );
+    // The studio runs in an opaque-origin frame with no query string, so the
+    // workflow id comes from the host's INIT handshake, not the URL.
+    const workflowId = getWorkflowId();
 
     if (!workflowId) {
       setDeleteError("Workflow ID is missing.");
@@ -36,7 +38,7 @@ export default function DeleteWorkflow({
     setIsDeleting(true);
     setDeleteError(null);
 
-    const requestId = crypto.randomUUID();
+    const requestId = randomId();
 
     try {
       const result = await new Promise<{ ok: boolean; error?: string }>(
@@ -73,6 +75,7 @@ export default function DeleteWorkflow({
               requestId,
               type: "WORKFLOW_DELETE",
               payload: { id: workflowId },
+              ...sessionFields(),
             },
             "*",
           );

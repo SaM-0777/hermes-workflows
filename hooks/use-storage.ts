@@ -1,5 +1,7 @@
 import { useCallback, useEffect, useState } from "react";
 import type { NodeData } from "@/lib/node";
+import { randomId } from "@/lib/random-id";
+import { awaitStudioSession, sessionFields } from "@/lib/studio-session";
 
 const REQUEST_TIMEOUT = 30_000;
 const PROTOCOL = "workflow-studio:v1";
@@ -28,12 +30,14 @@ interface HostResponse {
   id?: string;
 }
 
-function requestHost<T>(
+async function requestHost<T>(
   type: RequestType,
   payload: Record<string, unknown> = {},
 ): Promise<T> {
+  await awaitStudioSession();
+
   return new Promise((resolve, reject) => {
-    const requestId = crypto.randomUUID();
+    const requestId = randomId();
 
     const cleanup = () => {
       window.removeEventListener("message", handleMessage);
@@ -73,6 +77,7 @@ function requestHost<T>(
         requestId,
         type,
         payload,
+        ...sessionFields(),
       },
       "*",
     );

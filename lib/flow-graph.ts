@@ -1,4 +1,3 @@
-import { Annotation, END, START, StateGraph } from "@langchain/langgraph";
 import type { Edge } from "@xyflow/react";
 import {
   isRecord,
@@ -50,22 +49,41 @@ export type WorkflowExecutionLogs = {
   };
 };
 
-const WorkflowState = Annotation.Root({
-  results: Annotation<Record<string, unknown>>({
-    reducer: (current, update) => ({
-      ...current,
-      ...update,
-    }),
-    default: () => ({}),
-  }),
-});
+/** Per-node outcome kept between steps, mirroring the shape the graph used to
+ *  merge into `state.results`. */
+type NodeResult = {
+  status: unknown;
+  output: unknown;
+};
 
+export type FlowGraphRunner = {
+  invoke: (input?: {
+    results?: Record<string, NodeResult>;
+  }) => Promise<{ results: Record<string, NodeResult> }>;
+};
+
+function errorDetails(error: unknown): { message: string; traceback?: string } {
+  return {
+    message: error instanceof Error ? error.message : String(error),
+    ...(error instanceof Error && error.stack ? { traceback: error.stack } : {}),
+  };
+}
+
+/**
+ * Build an executable plan for a workflow.
+ *
+ * This replaces the previous LangGraph `StateGraph`: same scheduling contract
+ * (a node runs once every parent has produced the handles it consumes, so
+ * independent branches run concurrently and joins wait), same node events and
+ * same error surface — implemented as a local dependency walk instead of a
+ * ~900 KB runtime dependency.
+ */
 export async function buildFlowGraph(
   nodes: WorkflowNode[],
   edges: Edge[],
   onNodeStateChange?: (nodeId: string, state: NodeRuntimeState) => void,
   onExecutionEvent?: (event: WorkflowExecutionEvent) => void,
-) {
+): Promise<FlowGraphRunner> {
   const connectedIds = new Set<string>();
 
   for (const edge of edges) {
@@ -84,148 +102,155 @@ export async function buildFlowGraph(
       connectedNodeIds.has(edge.source) && connectedNodeIds.has(edge.target),
   );
 
-  const nodeNames = connectedNodes.map((node) => node.id);
-  const graph = new StateGraph(WorkflowState, {
-    nodes: nodeNames,
-  });
+  const incomingEdges = new Map<string, Edge[]>(
+    connectedNodes.map((node) => [node.id, []]),
+  );
 
-  for (const node of connectedNodes) {
-    graph.addNode(node.id, async (state) => {
-      const startedAt = Date.now();
-      const inputs: Record<string, unknown> = {};
-
-      try {
-        const incomingEdges = connectedEdges.filter(
-          (edge) => edge.target === node.id,
-        );
-
-        // LangGraph triggers a node as soon as ANY parent completes. When a
-        // node has several distinct parents (a join), wait for the remaining
-        // parents instead of failing with "output is unavailable".
-        const pendingParents = incomingEdges.filter((edge) => {
-          const result = state.results[edge.source];
-          if (!isRecord(result) || !isRecord(result.output)) return true;
-          return (
-            !edge.sourceHandle || !(edge.sourceHandle in result.output)
-          );
-        });
-        if (pendingParents.length > 0) {
-          return { results: {} };
-        }
-
-        for (const edge of incomingEdges) {
-          const sourceHandle = edge.sourceHandle;
-          const targetHandle = edge.targetHandle;
-          if (!sourceHandle || !targetHandle) {
-            throw new Error(
-              `Missing handle information for connection ${edge.source} → ${edge.target}`,
-            );
-          }
-
-          const sourceResult = state.results[edge.source];
-          if (!isRecord(sourceResult) || !isRecord(sourceResult.output)) {
-            throw new Error(
-              `Output from upstream node "${edge.source}" is unavailable.`,
-            );
-          }
-          if (!(sourceHandle in sourceResult.output)) {
-            throw new Error(
-              `Output "${sourceHandle}" not found on node "${edge.source}".`,
-            );
-          }
-
-          inputs[targetHandle] = sourceResult.output[sourceHandle];
-        }
-
-        onNodeStateChange?.(node.id, {
-          status: "running",
-          inputs,
-          startedAt,
-        });
-
-        onExecutionEvent?.({
-          type: "node.started",
-          nodeId: node.id,
-          timestamp: startedAt,
-          inputs,
-        });
-
-        const result = await runNode(node, inputs);
-        const completedAt = Date.now();
-
-        onNodeStateChange?.(node.id, {
-          status: "success",
-          inputs,
-          output: result.output,
-          startedAt,
-          completedAt,
-        });
-
-        onExecutionEvent?.({
-          type: "node.completed",
-          nodeId: node.id,
-          timestamp: completedAt,
-          inputs,
-          output: result.output,
-          duration: completedAt - startedAt,
-        });
-
-        return {
-          results: {
-            [node.id]: {
-              status: result.status,
-              output: result.output,
-            },
-          },
-        };
-      } catch (error) {
-        const completedAt = Date.now();
-        onNodeStateChange?.(node.id, {
-          status: "error",
-          inputs,
-          error: {
-            message: error instanceof Error ? error.message : String(error),
-            ...(error instanceof Error && error.stack
-              ? { traceback: error.stack }
-              : {}),
-          },
-          startedAt,
-          completedAt,
-        });
-        onExecutionEvent?.({
-          type: "node.failed",
-          nodeId: node.id,
-          timestamp: completedAt,
-          inputs,
-          error: {
-            message: error instanceof Error ? error.message : String(error),
-            ...(error instanceof Error && error.stack
-              ? { traceback: error.stack }
-              : {}),
-          },
-          duration: completedAt - startedAt,
-        });
-
-        throw error;
-      }
-    });
-  }
-
-  const incoming = new Set(connectedEdges.map((edge) => edge.target));
-  const outgoing = new Set(connectedEdges.map((edge) => edge.source));
-
-  for (const node of connectedNodes) {
-    if (!incoming.has(node.id)) {
-      graph.addEdge(START, node.id);
-    }
-    if (!outgoing.has(node.id)) {
-      graph.addEdge(node.id, END);
-    }
-  }
   for (const edge of connectedEdges) {
-    graph.addEdge(edge.source, edge.target);
+    incomingEdges.get(edge.target)?.push(edge);
   }
 
-  const compiledGraph = graph.compile();
-  return compiledGraph;
+  /** Distinct parents per node: several edges from one parent (different
+   *  handles) all settle together, so dependencies are counted per parent. */
+  const parents = new Map<string, string[]>(
+    connectedNodes.map((node) => {
+      const sources = new Set(
+        (incomingEdges.get(node.id) ?? []).map((edge) => edge.source),
+      );
+      return [node.id, [...sources]];
+    }),
+  );
+
+  const runNodeWithInputs = async (
+    node: WorkflowNode,
+    results: Record<string, NodeResult>,
+  ): Promise<NodeResult> => {
+    const startedAt = Date.now();
+    const inputs: Record<string, unknown> = {};
+
+    try {
+      for (const edge of incomingEdges.get(node.id) ?? []) {
+        const sourceHandle = edge.sourceHandle;
+        const targetHandle = edge.targetHandle;
+        if (!sourceHandle || !targetHandle) {
+          throw new Error(
+            `Missing handle information for connection ${edge.source} → ${edge.target}`,
+          );
+        }
+
+        const sourceResult = results[edge.source];
+        if (!isRecord(sourceResult) || !isRecord(sourceResult.output)) {
+          throw new Error(
+            `Output from upstream node "${edge.source}" is unavailable.`,
+          );
+        }
+        if (!(sourceHandle in sourceResult.output)) {
+          throw new Error(
+            `Output "${sourceHandle}" not found on node "${edge.source}".`,
+          );
+        }
+
+        inputs[targetHandle] = sourceResult.output[sourceHandle];
+      }
+
+      onNodeStateChange?.(node.id, {
+        status: "running",
+        inputs,
+        startedAt,
+      });
+
+      onExecutionEvent?.({
+        type: "node.started",
+        nodeId: node.id,
+        timestamp: startedAt,
+        inputs,
+      });
+
+      const result = await runNode(node, inputs);
+      const completedAt = Date.now();
+
+      onNodeStateChange?.(node.id, {
+        status: "success",
+        inputs,
+        output: result.output,
+        startedAt,
+        completedAt,
+      });
+
+      onExecutionEvent?.({
+        type: "node.completed",
+        nodeId: node.id,
+        timestamp: completedAt,
+        inputs,
+        output: result.output,
+        duration: completedAt - startedAt,
+      });
+
+      return { status: result.status, output: result.output };
+    } catch (error) {
+      const completedAt = Date.now();
+      const details = errorDetails(error);
+
+      onNodeStateChange?.(node.id, {
+        status: "error",
+        inputs,
+        error: details,
+        startedAt,
+        completedAt,
+      });
+
+      onExecutionEvent?.({
+        type: "node.failed",
+        nodeId: node.id,
+        timestamp: completedAt,
+        inputs,
+        error: details,
+        duration: completedAt - startedAt,
+      });
+
+      throw error;
+    }
+  };
+
+  const invoke = async (
+    input?: { results?: Record<string, NodeResult> },
+  ): Promise<{ results: Record<string, NodeResult> }> => {
+    const results: Record<string, NodeResult> = { ...(input?.results ?? {}) };
+    const done = new Set(Object.keys(results));
+    const scheduled = new Set<string>();
+
+    // Repeatedly run every node whose parents have all finished. A wave runs
+    // concurrently, so independent branches interleave the way the graph did.
+    for (;;) {
+      const ready = connectedNodes.filter(
+        (node) =>
+          !done.has(node.id) &&
+          !scheduled.has(node.id) &&
+          (parents.get(node.id) ?? []).every((parent) => done.has(parent)),
+      );
+
+      if (ready.length === 0) break;
+
+      for (const node of ready) scheduled.add(node.id);
+
+      await Promise.all(
+        ready.map(async (node) => {
+          results[node.id] = await runNodeWithInputs(node, results);
+          done.add(node.id);
+        }),
+      );
+    }
+
+    const unfinished = connectedNodes.filter((node) => !done.has(node.id));
+    if (unfinished.length > 0) {
+      const ids = unfinished.map((node) => node.id).join(", ");
+      throw new Error(
+        `Workflow cannot run: ${ids} never became ready (check for a cycle).`,
+      );
+    }
+
+    return { results };
+  };
+
+  return { invoke };
 }

@@ -1,5 +1,8 @@
 import type { Edge, Node } from "@xyflow/react";
 
+import { awaitStudioSession, sessionFields } from "@/lib/studio-session";
+import { randomId } from "@/lib/random-id";
+
 const PROTOCOL = "workflow-studio:v1";
 const REQUEST_TIMEOUT = 15_000;
 
@@ -66,17 +69,19 @@ window.addEventListener("message", (event: MessageEvent<unknown>) => {
   pending.resolve(message);
 });
 
-function request<T>(
+async function request<T>(
   type: string,
   payload: Record<string, unknown> = {},
 ): Promise<T> {
+  await awaitStudioSession();
+
   return new Promise((resolve, reject) => {
     if (window.parent === window) {
       reject(new Error("Workflow Studio must run inside Hermes Desktop"));
       return;
     }
 
-    const requestId = crypto.randomUUID();
+    const requestId = randomId();
 
     const timeout = setTimeout(() => {
       pendingRequests.delete(requestId);
@@ -95,6 +100,7 @@ function request<T>(
         requestId,
         type,
         payload,
+        ...sessionFields(),
       },
       "*",
     );

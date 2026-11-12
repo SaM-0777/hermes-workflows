@@ -23,7 +23,10 @@ import {
   type WorkflowRest,
 } from "../lib/workflow-storage";
 
-const STUDIO_URL = "http://localhost:5173";
+/** Injected by scripts/build-plugin.ts: the built studio, inlined as a data URL.
+ *  A dev build may substitute `STUDIO_DEV_URL` at build time; production never
+ *  carries a dev-server URL (the build fails if one sneaks in). */
+declare const __STUDIO_SRC__: string;
 
 interface WorkflowStudioContext {
   rest: WorkflowRest;
@@ -36,6 +39,10 @@ export interface WorkflowStudioPageProps {
 export function WorkflowStudioPage({ ctx }: WorkflowStudioPageProps) {
   const frameRef = useRef<HTMLIFrameElement | null>(null);
   const workflowRef = useRef<WorkflowDocument | null>(null);
+  /** Minted per mount and handed to the frame in INIT; every request from the
+   *  frame must echo it, so nothing else that reaches this window can drive
+   *  node execution. */
+  const sessionTokenRef = useRef<string>(crypto.randomUUID());
   const hashQuery = window.location.hash.includes("?")
     ? window.location.hash.slice(window.location.hash.indexOf("?"))
     : "";
@@ -181,7 +188,10 @@ export function WorkflowStudioPage({ ctx }: WorkflowStudioPageProps) {
             {
               protocol: "workflow-studio:v1",
               type: "INIT",
-              payload: { workflowId },
+              payload: {
+                workflowId,
+                token: sessionTokenRef.current,
+              },
             },
             "*",
           );
@@ -190,6 +200,11 @@ export function WorkflowStudioPage({ ctx }: WorkflowStudioPageProps) {
         }
 
         if (!isWorkflowMessage(message)) return;
+
+        // Anything that did not come through this mount's handshake is dropped,
+        // including a frame left over from an earlier mount.
+        const token = (message as { token?: unknown }).token;
+        if (token !== sessionTokenRef.current) return;
 
         if (message.type === "NAVIGATE") {
           const path = message.payload?.path;
@@ -308,7 +323,7 @@ export function WorkflowStudioPage({ ctx }: WorkflowStudioPageProps) {
       <div className="relative min-h-0 flex-1">
         <SandboxedFrame
           ref={frameRef}
-          src={STUDIO_URL}
+          src={__STUDIO_SRC__}
           title="Workflow Studio"
           className="block size-full border-0"
         />

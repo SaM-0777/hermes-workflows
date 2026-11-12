@@ -1,6 +1,9 @@
 import z from "zod";
 import { type Node } from "@xyflow/react";
 
+import { sessionFields } from "@/lib/studio-session";
+import { randomId } from "@/lib/random-id";
+
 export const categories = [
   { value: "data", label: "Data" },
   { value: "model", label: "Model" },
@@ -163,7 +166,7 @@ export async function runNode(
     throw new Error(`Node "${node.id}" has no valid Execution.`);
   }
 
-  const requestId = crypto.randomUUID();
+  const requestId = randomId();
   return new Promise((resolve, reject) => {
     const cleanup = () => {
       window.removeEventListener("message", handleMessage);
@@ -227,6 +230,7 @@ export async function runNode(
           code,
           inputs,
         },
+        ...sessionFields(),
       },
       "*",
     );

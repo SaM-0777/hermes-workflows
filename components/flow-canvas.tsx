@@ -22,6 +22,8 @@ import { BaseNode } from "./base-node";
 import { Button } from "./ui/button";
 import DeleteWorkflow from "./delete-flow";
 import { buildFlowGraph } from "@/lib/flow-graph";
+import { setStudioSession, sessionFields } from "@/lib/studio-session";
+import { randomId } from "@/lib/random-id";
 import {
   useNodeRuntimeState,
   WorkflowRuntimeProvider,
@@ -99,7 +101,7 @@ export default function FlowCanvas() {
   //  );
   //  if (!workflowId) return;
 
-  //  const requestId = crypto.randomUUID();
+  //  const requestId = randomId();
   //  const timeout = window.setTimeout(() => {
   //    cleanup();
   //    console.error("Workflow loading timed out");
@@ -176,7 +178,7 @@ export default function FlowCanvas() {
   );
   const onAddNode = useCallback(
     (data: NodeData) => {
-      const id = crypto.randomUUID();
+      const id = randomId();
       const position = screenToFlowPosition({
         x: window.innerWidth / 2,
         y: window.innerHeight / 2,
@@ -201,7 +203,7 @@ export default function FlowCanvas() {
       nodes: WorkflowNode[];
       edges: Edge[];
     }> => {
-      const requestId = crypto.randomUUID();
+      const requestId = randomId();
 
       return new Promise((resolve, reject) => {
         const timeout = window.setTimeout(() => {
@@ -253,6 +255,7 @@ export default function FlowCanvas() {
             requestId,
             type: "WORKFLOW_LOAD",
             payload: { id: workflowId },
+            ...sessionFields(),
           },
           "*",
         );
@@ -279,6 +282,7 @@ export default function FlowCanvas() {
 
       const workflowId = message.payload.workflowId;
 
+      setStudioSession({ workflowId, token: message.payload.token });
       setWorkflowId(workflowId);
 
       try {
@@ -403,7 +407,7 @@ export default function FlowCanvas() {
 
     setIsSaving(true);
 
-    const requestId = crypto.randomUUID();
+    const requestId = randomId();
 
     try {
       await new Promise<void>((resolve, reject) => {
@@ -448,6 +452,7 @@ export default function FlowCanvas() {
               nodes,
               edges,
             },
+            ...sessionFields(),
           },
           "*",
         );
@@ -455,8 +460,8 @@ export default function FlowCanvas() {
       toast.success("Workflow saved successfully");
     } catch (error) {
       const err = error as Error;
-      toast.success(
-        `Failed to save workflow. Error ${err?.message || "Unknown error occurred"}`,
+      toast.error(
+        `Failed to save workflow. ${err?.message || "Unknown error occurred"}`,
       );
     } finally {
       setIsSaving(false);
