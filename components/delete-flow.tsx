@@ -28,8 +28,6 @@ export default function DeleteWorkflow({
       "workflowId",
     );
 
-    console.log({ workflowId });
-
     if (!workflowId) {
       setDeleteError("Workflow ID is missing.");
       return;

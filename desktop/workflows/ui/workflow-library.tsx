@@ -4,11 +4,14 @@ import { PanelEmpty } from "./components/panel-empty";
 import { PageLoader } from "./components/page-loader";
 import { TextTab } from "./components/text-tab";
 import { WorkflowBrowser } from "./components/workflow-browser";
-import { readWorkflows, WorkflowLibraryContext } from "../lib/workflow-storage";
+import { readWorkflows, WorkflowRest } from "../lib/workflow-storage";
 import type { WorkflowDocument } from "../lib/workflow-validation";
 
 export interface WorkflowLibraryPageProps {
-  ctx: WorkflowLibraryContext;
+  files: unknown;
+  ctx: {
+    rest: WorkflowRest;
+  };
 }
 
 export function WorkflowLibraryPage({ ctx }: WorkflowLibraryPageProps) {
@@ -21,13 +24,13 @@ export function WorkflowLibraryPage({ ctx }: WorkflowLibraryPageProps) {
     setError("");
 
     try {
-      setWorkflows(await readWorkflows(ctx.files));
+      setWorkflows(await readWorkflows(ctx.rest));
     } catch (error) {
       setError(error instanceof Error ? error.message : String(error));
     } finally {
       setPending(false);
     }
-  }, [ctx.files]);
+  }, [ctx.rest]);
 
   useEffect(() => {
     // eslint-disable-next-line react-hooks/set-state-in-effect

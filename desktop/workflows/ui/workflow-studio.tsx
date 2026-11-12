@@ -20,20 +20,13 @@ import {
 import {
   loadWorkflow,
   saveWorkflow,
-  type WorkflowFiles,
+  type WorkflowRest,
 } from "../lib/workflow-storage";
 
 const STUDIO_URL = "http://localhost:5173";
 
 interface WorkflowStudioContext {
-  files: WorkflowFiles;
-  rest: (
-    path: string,
-    options: {
-      method: "POST";
-      body: Record<string, unknown>;
-    },
-  ) => Promise<unknown>;
+  rest: WorkflowRest;
 }
 
 export interface WorkflowStudioPageProps {
@@ -73,7 +66,7 @@ export function WorkflowStudioPage({ ctx }: WorkflowStudioPageProps) {
       };
     }
 
-    void loadWorkflow(ctx.files, workflowId)
+    void loadWorkflow(ctx.rest, workflowId)
       .then((loaded) => {
         if (!active) return;
         workflowRef.current = loaded;
@@ -102,7 +95,7 @@ export function WorkflowStudioPage({ ctx }: WorkflowStudioPageProps) {
     return () => {
       active = false;
     };
-  }, [ctx.files, name, workflowId]);
+  }, [ctx.rest, name, workflowId]);
 
   const saveName = useCallback(
     async (name: string) => {
@@ -111,7 +104,7 @@ export function WorkflowStudioPage({ ctx }: WorkflowStudioPageProps) {
 
       setNameStatus("saving");
       try {
-        const saved = await saveWorkflow(ctx.files, {
+        const saved = await saveWorkflow(ctx.rest, {
           id: current.id,
           nodes: current.nodes,
           edges: current.edges,
@@ -125,7 +118,7 @@ export function WorkflowStudioPage({ ctx }: WorkflowStudioPageProps) {
         setNameStatus("idle");
       }
     },
-    [ctx.files, workflowId],
+    [ctx.rest, workflowId],
   );
 
   useEffect(() => {
@@ -231,7 +224,8 @@ export function WorkflowStudioPage({ ctx }: WorkflowStudioPageProps) {
         //  return;
         //}
 
-        const result = await handleWorkflowRequest(ctx.files, message);
+        const result = await handleWorkflowRequest(ctx.rest, message);
+
         if (isRecord(result.workflow) && isWorkflowDocument(result.workflow)) {
           workflowRef.current = result.workflow;
           setWorkflow(result.workflow);

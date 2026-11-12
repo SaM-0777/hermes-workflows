@@ -397,194 +397,59 @@ function SearchHeader(props) {
   });
 }
 
-// desktop/workflows/lib/workflow-validation.ts
-function isRecord(value) {
-  return value !== null && typeof value === "object" && !Array.isArray(value);
-}
-function isValidId(id) {
-  return typeof id === "string" && /^[a-zA-Z0-9_-]{1,80}$/.test(id);
-}
-function isWorkflowDocument(value) {
-  return isRecord(value) && typeof value.id === "string" && Array.isArray(value.nodes) && Array.isArray(value.edges);
-}
-function isValidWorkflowDocument(value, expectedId) {
-  return isWorkflowDocument(value) && isValidId(value.id) && (expectedId === undefined || value.id === expectedId);
-}
-
 // desktop/workflows/lib/workflow-storage.ts
-var FILE_PREFIX = "workflow-";
-function resultMessage(result, fallback) {
-  return result.message || result.error || fallback;
+async function readWorkflows(rest) {
+  return await rest("/workflows", {
+    method: "GET"
+  });
 }
-function workflowPath(id) {
-  return `${FILE_PREFIX}${id}.json`;
+async function createWorkflow(rest, name) {
+  return await rest("/workflows", {
+    method: "POST",
+    body: { name }
+  });
 }
-async function readWorkflows(files) {
-  const listing = await files.list("data");
-  if (!listing.ok) {
-    throw new Error(resultMessage(listing, "Unable to list workflows"));
-  }
-  const workflows = [];
-  for (const entry of listing.entries) {
-    if (entry.isDirectory || !entry.name.startsWith(FILE_PREFIX) || !entry.name.endsWith(".json")) {
-      continue;
+async function saveWorkflow(rest, input) {
+  return await rest(`/workflows/${input.id}`, {
+    method: "PUT",
+    body: {
+      name: input.name,
+      nodes: input.nodes,
+      edges: input.edges
     }
-    const result = await files.readText("data", entry.name);
-    if (!result.ok)
-      continue;
-    try {
-      const workflow = JSON.parse(result.text);
-      if (isWorkflowDocument(workflow)) {
-        workflows.push({
-          id: workflow.id,
-          name: workflow.name || "Untitled workflow",
-          nodes: workflow.nodes,
-          edges: workflow.edges,
-          createdAt: workflow.createdAt,
-          updatedAt: workflow.updatedAt
-        });
-      }
-    } catch {}
-  }
-  return workflows.sort((a, b) => new Date(b.updatedAt ?? "").getTime() - new Date(a.updatedAt ?? "").getTime());
+  });
 }
-async function createWorkflow(files, name) {
-  const id = crypto.randomUUID();
-  const now = new Date().toISOString();
-  const defaultName = `workflow-${id}`;
-  const workflow = {
-    id,
-    name: name?.trim() ? name.trim() : defaultName,
-    createdAt: now,
-    updatedAt: now,
-    nodes: [],
-    edges: []
-  };
-  const result = await files.writeText("data", workflowPath(id), JSON.stringify(workflow, null, 2), { exclusive: true });
-  if (!result.ok) {
-    throw new Error(resultMessage(result, "Could not create workflow"));
-  }
-  return workflow;
+async function loadWorkflow(rest, id) {
+  return await rest(`/workflows/${id}`, {
+    method: "GET"
+  });
 }
-async function saveWorkflow(files, input) {
-  if (!isValidId(input.id)) {
-    throw new Error("Invalid workflow data");
-  }
-  const path = workflowPath(input.id);
-  const existing = await files.readText("data", path);
-  if (!existing.ok)
-    throw new Error("Workflow not found");
-  let previous;
-  try {
-    previous = JSON.parse(existing.text);
-  } catch {
-    throw new Error("Existing workflow file is invalid");
-  }
-  if (!isWorkflowDocument(previous)) {
-    throw new Error("Existing workflow file is invalid");
-  }
-  const now = new Date().toISOString();
-  const workflow = {
-    id: input.id,
-    name: typeof input.name === "string" && input.name.trim() ? input.name.trim() : previous.name || `workflow-${input.id}`,
-    createdAt: previous.createdAt || now,
-    updatedAt: now,
-    nodes: input.nodes,
-    edges: input.edges
-  };
-  const result = await files.writeText("data", path, JSON.stringify(workflow, null, 2));
-  if (!result.ok) {
-    throw new Error(resultMessage(result, "Could not save workflow"));
-  }
-  return workflow;
+async function deleteWorkflow(rest, id) {
+  return await rest(`/workflows/${id}`, {
+    method: "DELETE"
+  });
 }
-async function loadWorkflow(files, id) {
-  if (!isValidId(id))
-    throw new Error("Invalid workflow ID");
-  const result = await files.readText("data", workflowPath(id));
-  if (!result.ok) {
-    throw new Error(resultMessage(result, "Could not load workflow"));
-  }
-  let workflow;
-  try {
-    workflow = JSON.parse(result.text);
-  } catch {
-    throw new Error("Workflow file contains invalid JSON");
-  }
-  if (!isValidWorkflowDocument(workflow, id)) {
-    throw new Error("Invalid workflow file structure");
-  }
-  return workflow;
+async function readNodeLibrary(rest) {
+  return await rest("/node-library", {
+    method: "GET"
+  });
 }
-async function deleteWorkflow(files, id) {
-  if (!isValidId(id))
-    throw new Error("Invalid workflow ID");
-  const result = await files.trash("data", workflowPath(id));
-  if (!result.ok) {
-    throw new Error(resultMessage(result, "Could not delete workflow"));
-  }
-  return id;
+async function saveLibraryNode(rest, data) {
+  return await rest("/node-library/nodes", {
+    method: "POST",
+    body: { data }
+  });
 }
-var NODE_LIBRARY_FILE = "node-library.json";
-async function writeNodeLibrary(files, nodes) {
-  const result = await files.writeText("data", NODE_LIBRARY_FILE, JSON.stringify(nodes, null, 2));
-  if (!result.ok) {
-    throw new Error(result.message || result.error || "Could not save node library");
-  }
+async function updateLibraryNode(rest, id, data) {
+  return await rest(`/node-library/nodes/${id}`, {
+    method: "PUT",
+    body: { data }
+  });
 }
-async function readNodeLibrary(files) {
-  const result = await files.readText("data", NODE_LIBRARY_FILE);
-  if (!result.ok) {
-    if (result.error === "not-found")
-      return [];
-    throw new Error(result.message || result.error || "Could not load node library");
-  }
-  let parsed;
-  try {
-    parsed = JSON.parse(result.text);
-  } catch {
-    throw new Error("Node library contains invalid JSON");
-  }
-  if (!Array.isArray(parsed) || !parsed.every((node) => node !== null && typeof node === "object" && typeof node.id === "string" && typeof node.data === "object" && node.data !== null && typeof node.createdAt === "string" && typeof node.updatedAt === "string")) {
-    throw new Error("Invalid node library structure");
-  }
-  return parsed;
-}
-async function saveLibraryNode(files, data) {
-  const nodes = await readNodeLibrary(files);
-  const now = new Date().toISOString();
-  const savedNode = {
-    id: crypto.randomUUID(),
-    data,
-    createdAt: now,
-    updatedAt: now
-  };
-  await writeNodeLibrary(files, [...nodes, savedNode]);
-  return savedNode;
-}
-async function updateLibraryNode(files, id, data) {
-  const nodes = await readNodeLibrary(files);
-  const existingNode = nodes.find((node) => node.id === id);
-  if (!existingNode) {
-    throw new Error("Node not found");
-  }
-  const updatedNode = {
-    ...existingNode,
-    data,
-    updatedAt: new Date().toISOString()
-  };
-  const updatedNodes = nodes.map((node) => node.id === id ? updatedNode : node);
-  await writeNodeLibrary(files, updatedNodes);
-  return updatedNode;
-}
-async function deleteLibraryNode(files, id) {
-  const nodes = await readNodeLibrary(files);
-  const updatedNodes = nodes.filter((node) => node.id !== id);
-  if (updatedNodes.length === nodes.length) {
-    throw new Error("Node not found");
-  }
-  await writeNodeLibrary(files, updatedNodes);
-  return id;
+async function deleteLibraryNode(rest, id) {
+  return await rest(`/node-library/nodes/${id}`, {
+    method: "DELETE"
+  });
 }
 
 // desktop/workflows/ui/components/workflow-browser.tsx
@@ -700,13 +565,13 @@ function WorkflowLibraryPage({ ctx }) {
     setPending(true);
     setError("");
     try {
-      setWorkflows(await readWorkflows(ctx.files));
+      setWorkflows(await readWorkflows(ctx.rest));
     } catch (error2) {
       setError(error2 instanceof Error ? error2.message : String(error2));
     } finally {
       setPending(false);
     }
-  }, [ctx.files]);
+  }, [ctx.rest]);
   useEffect2(() => {
     refreshWorkflows();
   }, [refreshWorkflows]);
@@ -773,6 +638,17 @@ import {
   useState as useState3
 } from "react";
 
+// desktop/workflows/lib/workflow-validation.ts
+function isRecord(value) {
+  return value !== null && typeof value === "object" && !Array.isArray(value);
+}
+function isValidId(id) {
+  return typeof id === "string" && /^[a-zA-Z0-9_-]{1,80}$/.test(id);
+}
+function isWorkflowDocument(value) {
+  return isRecord(value) && typeof value.id === "string" && Array.isArray(value.nodes) && Array.isArray(value.edges);
+}
+
 // desktop/workflows/lib/workflow-protocol.ts
 var PROTOCOL = "workflow-studio:v1";
 function isWorkflowMessage(value) {
@@ -792,19 +668,17 @@ function assertPayload(message) {
     throw new Error("Invalid request payload");
   return payload;
 }
-async function handleWorkflowRequest(files, message) {
+async function handleWorkflowRequest(rest, message) {
   const payload = assertPayload(message);
-  if (!files)
-    throw new Error("Hermes file storage is unavailable");
   if (message.type === "WORKFLOW_LIST") {
-    const workflows = await readWorkflows(files);
+    const workflows = await readWorkflows(rest);
     return {
       workflows: workflows.filter((workflow) => isValidId(workflow.id))
     };
   }
   if (message.type === "WORKFLOW_CREATE") {
     const name = typeof payload.name === "string" && payload.name.trim() ? payload.name.trim().slice(0, 120) : undefined;
-    return { workflow: await createWorkflow(files, name) };
+    return { workflow: await createWorkflow(rest, name) };
   }
   if (message.type === "WORKFLOW_SAVE") {
     const { id, nodes, edges, name } = payload;
@@ -812,7 +686,7 @@ async function handleWorkflowRequest(files, message) {
       throw new Error("Invalid workflow data");
     }
     return {
-      workflow: await saveWorkflow(files, {
+      workflow: await saveWorkflow(rest, {
         id,
         nodes,
         edges,
@@ -824,16 +698,16 @@ async function handleWorkflowRequest(files, message) {
     const { id } = payload;
     if (!isValidId(id))
       throw new Error("Invalid workflow ID");
-    return { workflow: await loadWorkflow(files, id) };
+    return { workflow: await loadWorkflow(rest, id) };
   }
   if (message.type === "WORKFLOW_DELETE") {
     const { id } = payload;
     if (!isValidId(id))
       throw new Error("Invalid workflow ID");
-    return { id: await deleteWorkflow(files, id) };
+    return { id: await deleteWorkflow(rest, id) };
   }
   if (message.type === "NODE_LIBRARY_LIST") {
-    const nodes = await readNodeLibrary(files);
+    const nodes = await readNodeLibrary(rest);
     return { nodes };
   }
   if (message.type === "NODE_LIBRARY_SAVE") {
@@ -841,7 +715,7 @@ async function handleWorkflowRequest(files, message) {
     if (!isRecord(data)) {
       throw new Error("Invalid node data");
     }
-    const node = await saveLibraryNode(files, data);
+    const node = await saveLibraryNode(rest, data);
     return { node };
   }
   if (message.type === "NODE_LIBRARY_UPDATE") {
@@ -849,7 +723,7 @@ async function handleWorkflowRequest(files, message) {
     if (!isValidId(id) || !isRecord(data)) {
       throw new Error("Invalid node update data");
     }
-    const node = await updateLibraryNode(files, id, data);
+    const node = await updateLibraryNode(rest, id, data);
     return { node };
   }
   if (message.type === "NODE_LIBRARY_DELETE") {
@@ -857,7 +731,7 @@ async function handleWorkflowRequest(files, message) {
     if (!isValidId(id)) {
       throw new Error("Invalid node ID");
     }
-    return { id: await deleteLibraryNode(files, id) };
+    return { id: await deleteLibraryNode(rest, id) };
   }
   throw new Error("Unsupported workflow operation");
 }
@@ -887,7 +761,7 @@ function WorkflowStudioPage({ ctx }) {
         active = false;
       };
     }
-    loadWorkflow(ctx.files, workflowId).then((loaded) => {
+    loadWorkflow(ctx.rest, workflowId).then((loaded) => {
       if (!active)
         return;
       workflowRef.current = loaded;
@@ -915,14 +789,14 @@ function WorkflowStudioPage({ ctx }) {
     return () => {
       active = false;
     };
-  }, [ctx.files, name, workflowId]);
+  }, [ctx.rest, name, workflowId]);
   const saveName = useCallback2(async (name2) => {
     const current = workflowRef.current;
     if (!current || !workflowId)
       return;
     setNameStatus("saving");
     try {
-      const saved = await saveWorkflow(ctx.files, {
+      const saved = await saveWorkflow(ctx.rest, {
         id: current.id,
         nodes: current.nodes,
         edges: current.edges,
@@ -935,7 +809,7 @@ function WorkflowStudioPage({ ctx }) {
     } catch {
       setNameStatus("idle");
     }
-  }, [ctx.files, workflowId]);
+  }, [ctx.rest, workflowId]);
   useEffect3(() => {
     const current = workflowRef.current;
     const normalized = nameDraft.trim() || name;
@@ -1002,7 +876,7 @@ function WorkflowStudioPage({ ctx }) {
           });
           return;
         }
-        const result = await handleWorkflowRequest(ctx.files, message);
+        const result = await handleWorkflowRequest(ctx.rest, message);
         if (isRecord(result.workflow) && isWorkflowDocument(result.workflow)) {
           workflowRef.current = result.workflow;
           setWorkflow(result.workflow);

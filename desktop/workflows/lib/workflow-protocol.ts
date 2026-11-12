@@ -4,11 +4,11 @@ import {
   loadWorkflow,
   readWorkflows,
   saveWorkflow,
-  type WorkflowFiles,
   readNodeLibrary,
   saveLibraryNode,
   updateLibraryNode,
   deleteLibraryNode,
+  type WorkflowRest,
 } from "./workflow-storage";
 import {
   isRecord,
@@ -59,14 +59,13 @@ function assertPayload(message: WorkflowMessage): Record<string, unknown> {
 }
 
 export async function handleWorkflowRequest(
-  files: WorkflowFiles | undefined,
+  rest: WorkflowRest,
   message: WorkflowMessage,
 ): Promise<Record<string, unknown>> {
   const payload = assertPayload(message);
-  if (!files) throw new Error("Hermes file storage is unavailable");
 
   if (message.type === "WORKFLOW_LIST") {
-    const workflows = await readWorkflows(files);
+    const workflows = await readWorkflows(rest);
     return {
       workflows: workflows.filter((workflow) => isValidId(workflow.id)),
     };
@@ -77,17 +76,19 @@ export async function handleWorkflowRequest(
       typeof payload.name === "string" && payload.name.trim()
         ? payload.name.trim().slice(0, 120)
         : undefined;
-    return { workflow: await createWorkflow(files, name) };
+
+    return { workflow: await createWorkflow(rest, name) };
   }
 
   if (message.type === "WORKFLOW_SAVE") {
     const { id, nodes, edges, name } = payload;
+
     if (!isValidId(id) || !Array.isArray(nodes) || !Array.isArray(edges)) {
       throw new Error("Invalid workflow data");
     }
 
     return {
-      workflow: await saveWorkflow(files, {
+      workflow: await saveWorkflow(rest, {
         id,
         nodes,
         edges,
@@ -99,17 +100,17 @@ export async function handleWorkflowRequest(
   if (message.type === "WORKFLOW_LOAD") {
     const { id } = payload;
     if (!isValidId(id)) throw new Error("Invalid workflow ID");
-    return { workflow: await loadWorkflow(files, id) };
+    return { workflow: await loadWorkflow(rest, id) };
   }
 
   if (message.type === "WORKFLOW_DELETE") {
     const { id } = payload;
     if (!isValidId(id)) throw new Error("Invalid workflow ID");
-    return { id: await deleteWorkflow(files, id) };
+    return { id: await deleteWorkflow(rest, id) };
   }
 
   if (message.type === "NODE_LIBRARY_LIST") {
-    const nodes = await readNodeLibrary(files);
+    const nodes = await readNodeLibrary(rest);
     return { nodes };
   }
 
@@ -118,7 +119,7 @@ export async function handleWorkflowRequest(
     if (!isRecord(data)) {
       throw new Error("Invalid node data");
     }
-    const node = await saveLibraryNode(files, data);
+    const node = await saveLibraryNode(rest, data);
     return { node };
   }
 
@@ -127,7 +128,7 @@ export async function handleWorkflowRequest(
     if (!isValidId(id) || !isRecord(data)) {
       throw new Error("Invalid node update data");
     }
-    const node = await updateLibraryNode(files, id, data);
+    const node = await updateLibraryNode(rest, id, data);
     return { node };
   }
 
@@ -136,7 +137,7 @@ export async function handleWorkflowRequest(
     if (!isValidId(id)) {
       throw new Error("Invalid node ID");
     }
-    return { id: await deleteLibraryNode(files, id) };
+    return { id: await deleteLibraryNode(rest, id) };
   }
 
   throw new Error("Unsupported workflow operation");

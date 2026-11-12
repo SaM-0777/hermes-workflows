@@ -2,10 +2,16 @@ import { ROUTES_AREA, SIDEBAR_NAV_AREA } from "@hermes/plugin-sdk";
 import { jsx } from "react/jsx-runtime";
 import { WorkflowLibraryPage } from "./workflows/ui/workflow-library";
 import { WorkflowStudioPage } from "./workflows/ui/workflow-studio";
-import type { WorkflowFiles } from "./workflows/lib/workflow-storage";
 
 interface PluginContext {
-  files: WorkflowFiles;
+  files: unknown;
+  rest: <T = unknown>(
+    path: string,
+    options?: {
+      method?: "GET" | "POST" | "PUT" | "DELETE";
+      body?: Record<string, unknown>;
+    },
+  ) => Promise<T>;
   registerMany: (contributions: unknown[]) => () => void;
 }
 
