@@ -35,8 +35,7 @@ import json
 
 source = ${JSON.stringify(source)}
 try:
-    tree = ast.parse(source)
-    compile(tree, "<workflow>", "exec")
+    ast.parse(source)
     result = {
         "valid": True,
         "diagnostics": []
