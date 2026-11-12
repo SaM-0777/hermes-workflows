@@ -1,4 +1,3 @@
-import { STUDIO_HTML } from "./studio-html";
 import { Button, Codicon, SandboxedFrame, host } from "@hermes/plugin-sdk";
 import {
   useCallback,
@@ -24,9 +23,7 @@ import {
   type WorkflowRest,
 } from "../lib/workflow-storage";
 
-const STUDIO_URL = import.meta.env.DEV
-  ? "http://localhost:5173"
-  : `data:text/html;charset=utf-8,${encodeURIComponent(STUDIO_HTML)}`;
+const STUDIO_URL = "http://localhost:5173";
 
 interface WorkflowStudioContext {
   rest: WorkflowRest;
@@ -45,23 +42,9 @@ export function WorkflowStudioPage({ ctx }: WorkflowStudioPageProps) {
   const workflowId =
     new URLSearchParams(hashQuery).get("workflowId") ??
     new URLSearchParams(window.location.search).get("workflowId");
-  //const studioUrl = workflowId
-  //  ? `${STUDIO_URL}/?workflowId=${encodeURIComponent(workflowId)}`
-  //  : STUDIO_URL;
-  const studioUrl = import.meta.env.DEV
-    ? workflowId
-      ? `http://localhost:5173/?workflowId=${encodeURIComponent(workflowId)}`
-      : "http://localhost:5173"
-    : `data:text/html;charset=utf-8,${encodeURIComponent(
-        STUDIO_HTML.replace(
-          "<head>",
-          `<head><script>window.__WORKFLOW_ID__=${JSON.stringify(workflowId)};</script>`,
-        ),
-      )}`;
-
-  console.log("[Workflow Studio] Environment:", import.meta.env.MODE);
-  console.log("[Workflow Studio] URL:", studioUrl);
-  console.log("[Workflow Studio] HTML size:", STUDIO_HTML.length);
+  const studioUrl = workflowId
+    ? `${STUDIO_URL}/?workflowId=${encodeURIComponent(workflowId)}`
+    : STUDIO_URL;
 
   const name = workflowId ? `workflow-${workflowId}` : "Workflow Studio";
   const [workflow, setWorkflow] = useState<WorkflowDocument | null>(null);
@@ -309,14 +292,6 @@ export function WorkflowStudioPage({ ctx }: WorkflowStudioPageProps) {
           src={studioUrl}
           title="Workflow Studio"
           className="block size-full border-0"
-          onLoad={() => {
-            console.log("[Workflow Studio] iframe loaded");
-            console.log("[Workflow Studio] src:", studioUrl.slice(0, 150));
-            console.log("[Workflow Studio] frame:", frameRef.current);
-          }}
-          onError={(e) => {
-            console.error("[Workflow Studio] iframe failed to load:", e);
-          }}
         />
       </div>
     </div>
