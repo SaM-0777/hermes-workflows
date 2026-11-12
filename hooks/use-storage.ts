@@ -17,7 +17,7 @@ type RequestType =
   | "NODE_LIBRARY_UPDATE"
   | "NODE_LIBRARY_DELETE";
 
-interface HostResponse<T> {
+interface HostResponse {
   protocol: typeof PROTOCOL;
   requestId: string;
   type: `${RequestType}_RESULT`;
@@ -42,7 +42,7 @@ function requestHost<T>(
 
     const handleMessage = (event: MessageEvent) => {
       if (event.source !== window.parent) return;
-      const response = event.data as HostResponse<T>;
+      const response = event.data as HostResponse;
       if (
         !response ||
         response.protocol !== PROTOCOL ||
