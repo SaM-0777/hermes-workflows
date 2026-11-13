@@ -1,4 +1,4 @@
-import { useCallback, useMemo, type DragEvent, type PointerEvent } from "react";
+import { useCallback, useMemo, useRef, type DragEvent, type PointerEvent } from "react";
 import { cn } from "@/lib/utils";
 import { Card, CardContent, CardHeader } from "./ui/card";
 import { useState } from "react";
@@ -54,7 +54,7 @@ export interface NodeWidgetProps {
 export function NodeWidget({ onAddNode }: NodeWidgetProps) {
   const { nodes, saveNode, updateNode, deleteNode } = useStorage();
   const [mode, setMode] = useState<WidgetMode>("expanded");
-  const [position, setPosition] = useState<WidgetPosition>({ x: 0, y: 0 });
+  const [position, setPosition] = useState<WidgetPosition>({ x: 16, y: 16 });
   const [pinned, setPinned] = useState<boolean>(false);
   const [view, setView] = useState<"library" | "create">("library");
   const [activeTab, setActiveTab] = useState<NodeWidgetTab>("my-nodes");
@@ -64,6 +64,7 @@ export function NodeWidget({ onAddNode }: NodeWidgetProps) {
     width: 350,
     height: 690,
   });
+  const cardRef = useRef<HTMLDivElement>(null);
   const [dragStart, setDragStart] = useState<{
     pointerId: number;
     pointerX: number;
@@ -127,9 +128,14 @@ export function NodeWidget({ onAddNode }: NodeWidgetProps) {
       mode === "minimized" ? 52 : mode === "compact" ? 110 : size.height;
     const nextX = dragStart.x + event.clientX - dragStart.pointerX;
     const nextY = dragStart.y + event.clientY - dragStart.pointerY;
+    // Clamp to the canvas, not the window: the widget is absolute inside it.
+    // `currentTarget` is the header, whose offsetParent is the (positioned) card —
+    // measure the canvas from the card itself, whose offsetParent is the canvas.
+    const canvas = (cardRef.current?.offsetParent as HTMLElement | null)
+      ?? document.body;
     updatePosition({
-      x: Math.max(0, Math.min(window.innerWidth - width, nextX)),
-      y: Math.max(0, Math.min(window.innerHeight - height, nextY)),
+      x: Math.max(0, Math.min(canvas.clientWidth - width, nextX)),
+      y: Math.max(0, Math.min(canvas.clientHeight - height, nextY)),
     });
   }
   function stopDragging() {
@@ -149,8 +155,9 @@ export function NodeWidget({ onAddNode }: NodeWidgetProps) {
 
   return (
     <Card
+      ref={cardRef}
       className={cn(
-        "fixed z-50 flex flex-col gap-0 overflow-hidden",
+        "absolute z-50 flex flex-col gap-0 overflow-hidden",
         "rounded-sm border-border bg-card py-0",
         "shadow-2xl shadow-black/25",
         "transition-[width] duration-300 ease-in-out motion-reduce:transition-none",
@@ -160,7 +167,7 @@ export function NodeWidget({ onAddNode }: NodeWidgetProps) {
         top: position.y,
         width:
           view === "create"
-            ? "min(980px, calc(100vw - 48px))"
+            ? "min(980px, calc(100% - 48px))"
             : mode === "compact"
               ? 270
               : size.width,

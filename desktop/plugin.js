@@ -2089,7 +2089,7 @@ import { Button as Button9, Codicon as Codicon5, host as host4 } from "@hermes/p
 import {
   useCallback as useCallback25,
   useEffect as useEffect32,
-  useRef as useRef73,
+  useRef as useRef74,
   useState as useState49
 } from "react";
 
@@ -13092,7 +13092,7 @@ var __iconData28 = {
 __iconData28.node;
 var X = createLucideIcon(__iconData28);
 // components/node-widget.tsx
-import { useCallback as useCallback23, useMemo as useMemo53 } from "react";
+import { useCallback as useCallback23, useMemo as useMemo53, useRef as useRef71 } from "react";
 
 // node_modules/cn/dist/tables.js
 var P = 48;
@@ -59021,7 +59021,7 @@ import { jsx as jsx28, jsxs as jsxs19, Fragment as Fragment11 } from "react/jsx-
 function NodeWidget({ onAddNode }) {
   const { nodes, saveNode, updateNode, deleteNode } = useStorage();
   const [mode, setMode] = useState43("expanded");
-  const [position, setPosition] = useState43({ x: 0, y: 0 });
+  const [position, setPosition] = useState43({ x: 16, y: 16 });
   const [pinned, setPinned] = useState43(false);
   const [view, setView] = useState43("library");
   const [activeTab, setActiveTab] = useState43("my-nodes");
@@ -59031,6 +59031,7 @@ function NodeWidget({ onAddNode }) {
     width: 350,
     height: 690
   });
+  const cardRef = useRef71(null);
   const [dragStart, setDragStart] = useState43(null);
   const filteredNodes = useMemo53(() => {
     return nodes.filter((node2) => node2.data.general.name.toLowerCase().includes(search.toLowerCase()));
@@ -59083,9 +59084,10 @@ function NodeWidget({ onAddNode }) {
     const height = mode === "minimized" ? 52 : mode === "compact" ? 110 : size4.height;
     const nextX = dragStart.x + event.clientX - dragStart.pointerX;
     const nextY = dragStart.y + event.clientY - dragStart.pointerY;
+    const canvas = cardRef.current?.offsetParent ?? document.body;
     updatePosition({
-      x: Math.max(0, Math.min(window.innerWidth - width, nextX)),
-      y: Math.max(0, Math.min(window.innerHeight - height, nextY))
+      x: Math.max(0, Math.min(canvas.clientWidth - width, nextX)),
+      y: Math.max(0, Math.min(canvas.clientHeight - height, nextY))
     });
   }
   function stopDragging() {
@@ -59096,11 +59098,12 @@ function NodeWidget({ onAddNode }) {
     event.dataTransfer.effectAllowed = "copy";
   }
   return /* @__PURE__ */ jsxs19(Card, {
-    className: cn2("fixed z-50 flex flex-col gap-0 overflow-hidden", "rounded-sm border-border bg-card py-0", "shadow-2xl shadow-black/25", "transition-[width] duration-300 ease-in-out motion-reduce:transition-none"),
+    ref: cardRef,
+    className: cn2("absolute z-50 flex flex-col gap-0 overflow-hidden", "rounded-sm border-border bg-card py-0", "shadow-2xl shadow-black/25", "transition-[width] duration-300 ease-in-out motion-reduce:transition-none"),
     style: {
       left: position.x,
       top: position.y,
-      width: view === "create" ? "min(980px, calc(100vw - 48px))" : mode === "compact" ? 270 : size4.width,
+      width: view === "create" ? "min(980px, calc(100% - 48px))" : mode === "compact" ? 270 : size4.width,
       height: mode === "compact" ? "auto" : size4.height
     },
     children: [
@@ -114446,7 +114449,7 @@ function isRecord3(value2) {
 // desktop/workflows/ui/workflow-studio.tsx
 import { jsx as jsx38, jsxs as jsxs27 } from "react/jsx-runtime";
 function WorkflowStudioPage({ ctx }) {
-  const workflowRef = useRef73(null);
+  const workflowRef = useRef74(null);
   const hashQuery = window.location.hash.includes("?") ? window.location.hash.slice(window.location.hash.indexOf("?")) : "";
   const workflowId = new URLSearchParams(hashQuery).get("workflowId") ?? new URLSearchParams(window.location.search).get("workflowId");
   const name = workflowId ? `workflow-${workflowId}` : "Workflow Studio";
