@@ -29,7 +29,14 @@ export default defineConfig({
   build: {
     // Fonts and images must be inlined: a plugin can ship no sibling asset files.
     assetsInlineLimit: Infinity,
-    cssCodeSplit: false,
+    // Only the stylesheet is built. The runtime never loads dist/index.html — the
+    // studio renders natively inside the plugin — and a stray JS bundle in the
+    // tree only gives the security scan something to flag.
+    rollupOptions: {
+      input: {
+        studio: path.resolve(import.meta.dirname, "src/index.css"),
+      },
+    },
   },
   optimizeDeps: {
     exclude: ["pyodide"],
