@@ -1,6 +1,15 @@
-import { loadPyodide, version, type PyodideInterface } from "pyodide";
 import type { PythonMethods } from "@/lib/python-code";
+import { hostRest } from "@/lib/host";
 import { dataTypes, type NodeData } from "@/lib/node";
+
+/**
+ * Python helpers for the node editor.
+ *
+ * These used to run Pyodide in the browser. That meant a CDN download, a WASM
+ * interpreter and dynamic imports inside the plugin bundle — which the Desktop
+ * plugin surface refuses (catalog rule 8). The work is plain AST inspection, so
+ * it lives in the plugin backend instead: nothing is executed on either side.
+ */
 
 export interface PythonDiagnostic {
   message: string;
@@ -13,45 +22,14 @@ export interface PythonValidationResult {
   diagnostics: PythonDiagnostic[];
 }
 
-let pyodidePromise: Promise<PyodideInterface> | undefined;
-async function getPyodide(): Promise<PyodideInterface> {
-  if (!pyodidePromise) {
-    pyodidePromise = loadPyodide({
-      indexURL: `https://cdn.jsdelivr.net/pyodide/v${version}/full/`,
-    });
-  }
-
-  return pyodidePromise;
-}
-
 export async function validatePython(
   source: string,
 ): Promise<PythonValidationResult> {
   try {
-    const pyodide = await getPyodide();
-    const result = await pyodide.runPythonAsync(`
-import ast
-import json
-
-source = ${JSON.stringify(source)}
-try:
-    ast.parse(source)
-    result = {
-        "valid": True,
-        "diagnostics": []
-    }
-except SyntaxError as error:
-    result = {
-        "valid": False,
-        "diagnostics": [{
-            "message": error.msg,
-            "line": error.lineno or 1,
-            "column": max((error.offset or 1) - 1, 0)
-        }]
-    }
-json.dumps(result)
-`);
-    return JSON.parse(result as string) as PythonValidationResult;
+    return await hostRest<PythonValidationResult>("/validate", {
+      method: "POST",
+      body: { source },
+    });
   } catch (error) {
     return {
       valid: false,
@@ -60,7 +38,7 @@ json.dumps(result)
           message:
             error instanceof Error
               ? error.message
-              : "Unable to initialize Python validator.",
+              : "Unable to reach the workflow backend.",
           line: 1,
           column: 0,
         },
@@ -91,205 +69,102 @@ function toFormDefaultValue(value: unknown): string {
   return JSON.stringify(value);
 }
 
+type ExecutionMetadata = {
+  name?: unknown;
+  description?: unknown;
+  category?: unknown;
+  inputs?: unknown;
+  outputs?: unknown;
+  parameters?: unknown;
+};
+
 export async function extractPythonDefinition(
   source: string,
 ): Promise<NodeData> {
-  const pyodide = await getPyodide();
+  const metadata = await hostRest<ExecutionMetadata>("/node-metadata", {
+    method: "POST",
+    body: { source },
+  });
 
-  // Pass source through Pyodide's globals instead of interpolating it
-  // into Python code.
-  pyodide.globals.set("workflow_source", source);
+  function parsePorts(value: unknown) {
+    if (!Array.isArray(value)) {
+      throw new Error("Inputs and outputs must be Python lists.");
+    }
 
-  try {
-    const result = await pyodide.runPythonAsync(`
-import ast
-import json
-
-tree = ast.parse(workflow_source)
-execution_class = next(
-    (
-        node for node in tree.body
-        if isinstance(node, ast.ClassDef) and node.name == "Execution"
-    ),
-    None
-)
-
-if execution_class is None:
-    raise ValueError("Could not find class Execution.")
-
-metadata = {}
-
-for statement in execution_class.body:
-    if not isinstance(statement, ast.AnnAssign):
-        continue
-
-    if not isinstance(statement.target, ast.Name):
-        continue
-
-    name = statement.target.id
-
-    if name not in ("name", "description", "category", "inputs", "outputs", "parameters"):
-        continue
-
-    try:
-      def read_value(node):
-        if isinstance(node, ast.Constant):
-            return node.value
-
-        if isinstance(node, ast.Name):
-            allowed_types = {
-                "Any", "str", "float", "int", "bool",
-                "dict", "list", "Image", "Audio", "Video", "File"
-            }
-
-            if node.id in allowed_types:
-                return node.id
-
-            raise ValueError(f"Unsupported identifier: {node.id}")
-
-        if isinstance(node, ast.List):
-            return [read_value(item) for item in node.elts]
-
-        if isinstance(node, ast.Tuple):
-            return tuple(read_value(item) for item in node.elts)
-
-        if isinstance(node, ast.Dict):
-            return {
-                read_value(key): read_value(value)
-                for key, value in zip(node.keys, node.values)
-            }
-
-        raise ValueError("Metadata must contain literal values.")
-
-      metadata[name] = read_value(statement.value)
-    except (ValueError, TypeError):
-        raise ValueError(f"Execution.{name} must contain a literal value.")
-
-json.dumps(metadata)
-`);
-
-    const metadata = JSON.parse(result as string);
-
-    function parsePorts(value: unknown) {
-      if (!Array.isArray(value)) {
-        throw new Error("Inputs and outputs must be Python lists.");
+    return value.map((port: Record<string, unknown>) => {
+      if (
+        typeof port !== "object" ||
+        port === null ||
+        typeof port.name !== "string" ||
+        typeof port.type !== "string"
+      ) {
+        throw new Error("Each input and output must define a name and type.");
       }
 
-      return value.map((port: Record<string, unknown>) => {
-        if (
-          typeof port !== "object" ||
-          port === null ||
-          typeof port.name !== "string" ||
-          typeof port.type !== "string"
-        ) {
-          throw new Error("Each input and output must define a name and type.");
-        }
+      const type = pythonToUiType[port.type];
+      if (!type) {
+        throw new Error(`Unsupported Python type: ${port.type}`);
+      }
 
-        const type = pythonToUiType[port.type];
-        if (!type) {
-          throw new Error(`Unsupported Python type: ${port.type}`);
-        }
-
-        return {
-          name: port.name,
-          type,
-        };
-      });
-    }
-
-    const parameters = metadata.parameters ?? {};
-
-    if (
-      typeof parameters !== "object" ||
-      parameters === null ||
-      Array.isArray(parameters)
-    ) {
-      throw new Error("Parameters must be a Python dictionary.");
-    }
-
-    const parsedParameters = Object.entries(parameters).map(
-      ([name, parameter]) => {
-        const value = parameter as Record<string, unknown>;
-        if (typeof value.type !== "string") {
-          throw new Error(`Parameter "${name}" is missing its type.`);
-        }
-        const type = pythonToUiType[value.type];
-        if (!type) {
-          throw new Error(
-            `Unsupported Python type "${value.type}" for parameter "${name}".`,
-          );
-        }
-        return {
-          name,
-          type,
-          defaultValue: toFormDefaultValue(value.default),
-        };
-      },
-    );
-
-    return {
-      general: {
-        name: metadata.name ?? "",
-        description: metadata.description ?? "",
-        category: metadata.category ?? "",
-      },
-      io: {
-        inputs: parsePorts(metadata.inputs ?? []),
-        outputs: parsePorts(metadata.outputs ?? []),
-      },
-      config: {
-        parameters: parsedParameters,
-      },
-    };
-  } finally {
-    pyodide.globals.delete("workflow_source");
+      return {
+        name: port.name,
+        type,
+      };
+    });
   }
+
+  const parameters = metadata.parameters ?? {};
+
+  if (
+    typeof parameters !== "object" ||
+    parameters === null ||
+    Array.isArray(parameters)
+  ) {
+    throw new Error("Parameters must be a Python dictionary.");
+  }
+
+  const parsedParameters = Object.entries(parameters).map(
+    ([name, parameter]) => {
+      const value = parameter as Record<string, unknown>;
+      if (typeof value.type !== "string") {
+        throw new Error(`Parameter "${name}" is missing its type.`);
+      }
+      const type = pythonToUiType[value.type];
+      if (!type) {
+        throw new Error(
+          `Unsupported Python type "${value.type}" for parameter "${name}".`,
+        );
+      }
+      return {
+        name,
+        type,
+        defaultValue: toFormDefaultValue(value.default),
+      };
+    },
+  );
+
+  return {
+    general: {
+      name: typeof metadata.name === "string" ? metadata.name : "",
+      description:
+        typeof metadata.description === "string" ? metadata.description : "",
+      category: typeof metadata.category === "string" ? metadata.category : "",
+    },
+    io: {
+      inputs: parsePorts(metadata.inputs ?? []),
+      outputs: parsePorts(metadata.outputs ?? []),
+    },
+    config: {
+      parameters: parsedParameters,
+    },
+  };
 }
 
 export async function extractPythonMethods(
   source: string,
 ): Promise<PythonMethods> {
-  const pyodide = await getPyodide();
-
-  pyodide.globals.set("workflow_source", source);
-
-  try {
-    const result = await pyodide.runPythonAsync(`
-import ast
-import json
-
-tree = ast.parse(workflow_source)
-lines = workflow_source.splitlines()
-
-execution_class = next(
-    (
-        node for node in tree.body
-        if isinstance(node, ast.ClassDef) and node.name == "Execution"
-    ),
-    None
-)
-
-if execution_class is None:
-    raise ValueError("Could not find class Execution.")
-
-methods = {}
-
-for node in execution_class.body:
-    if not isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef)):
-        continue
-    if node.name not in ("run", "build_output"):
-        continue
-    start_line = min(
-        [node.lineno] + [decorator.lineno for decorator in node.decorator_list]
-    )
-    end_line = node.end_lineno
-    methods[node.name] = "\\n".join(lines[start_line - 1:end_line])
-
-json.dumps(methods)
-`);
-
-    return JSON.parse(result as string) as PythonMethods;
-  } finally {
-    pyodide.globals.delete("workflow_source");
-  }
+  return hostRest<PythonMethods>("/node-methods", {
+    method: "POST",
+    body: { source },
+  });
 }

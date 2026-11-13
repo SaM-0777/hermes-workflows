@@ -22,8 +22,8 @@ import { BaseNode } from "./base-node";
 import { Button } from "./ui/button";
 import DeleteWorkflow from "./delete-flow";
 import { buildFlowGraph } from "@/lib/flow-graph";
-import { setStudioSession, sessionFields } from "@/lib/studio-session";
-import { randomId } from "@/lib/random-id";
+import { getWorkflowId } from "@/lib/host";
+import { saveWorkflow, loadWorkflow } from "@/lib/workflow";
 import {
   useNodeRuntimeState,
   WorkflowRuntimeProvider,
@@ -50,7 +50,7 @@ const nodeTypes = {
   base: WorkflowBaseNode,
 };
 
-export default function FlowCanvas() {
+export default function FlowCanvas({ runNonce = 0 }: { runNonce?: number }) {
   const [workflowId, setWorkflowId] = useState<string | null>(null);
   const { screenToFlowPosition, getNode } = useReactFlow<WorkflowNode, Edge>();
   const [nodes, setNodes, onNodesChange] = useNodesState<WorkflowNode>([]);
@@ -95,69 +95,6 @@ export default function FlowCanvas() {
     [getNode],
   );
 
-  //useEffect(() => {
-  //  const workflowId = new URLSearchParams(window.location.search).get(
-  //    "workflowId",
-  //  );
-  //  if (!workflowId) return;
-
-  //  const requestId = randomId();
-  //  const timeout = window.setTimeout(() => {
-  //    cleanup();
-  //    console.error("Workflow loading timed out");
-  //  }, 30_000);
-
-  //  const handleMessage = (event: MessageEvent) => {
-  //    if (event.source !== window.parent) return;
-  //    const response = event.data;
-
-  //    if (
-  //      response?.protocol !== "workflow-studio:v1" ||
-  //      response?.requestId !== requestId ||
-  //      response?.type !== "WORKFLOW_LOAD_RESULT"
-  //    ) {
-  //      return;
-  //    }
-
-  //    cleanup();
-
-  //    if (!response.ok || !response.workflow) {
-  //      console.error(response.error || "Could not load workflow");
-  //      return;
-  //    }
-
-  //    setNodes(response.workflow.nodes);
-  //    setEdges(response.workflow.edges);
-  //  };
-
-  //  const cleanup = () => {
-  //    window.clearTimeout(timeout);
-  //    window.removeEventListener("message", handleMessage);
-  //  };
-
-  //  window.addEventListener("message", handleMessage);
-  //  window.parent.postMessage(
-  //    {
-  //      protocol: "workflow-studio:v1",
-  //      requestId,
-  //      type: "WORKFLOW_LOAD",
-  //      payload: { id: workflowId },
-  //    },
-  //    "*",
-  //  );
-
-  //  return cleanup;
-  //}, [setNodes, setEdges]);
-
-  useEffect(() => {
-    setEdges((currentEdges) => {
-      const validEdges = currentEdges.filter((edge) => isValidConnection(edge));
-      return validEdges.length === currentEdges.length
-        ? currentEdges
-        : validEdges;
-    });
-  }, [nodes, isValidConnection, setEdges]);
-
   const onConnect = useCallback(
     (connection: Connection) => {
       setEdges((currentEdges) =>
@@ -176,9 +113,10 @@ export default function FlowCanvas() {
     },
     [setEdges],
   );
+
   const onAddNode = useCallback(
     (data: NodeData) => {
-      const id = randomId();
+      const id = crypto.randomUUID();
       const position = screenToFlowPosition({
         x: window.innerWidth / 2,
         y: window.innerHeight / 2,
@@ -196,129 +134,32 @@ export default function FlowCanvas() {
     [screenToFlowPosition, setNodes],
   );
 
-  const loadWorkflow = useCallback(
-    (
-      workflowId: string,
-    ): Promise<{
-      nodes: WorkflowNode[];
-      edges: Edge[];
-    }> => {
-      const requestId = randomId();
-
-      return new Promise((resolve, reject) => {
-        const timeout = window.setTimeout(() => {
-          cleanup();
-          reject(new Error("Workflow loading timed out"));
-        }, 30_000);
-
-        const handleMessage = (event: MessageEvent) => {
-          if (event.source !== window.parent) return;
-
-          const response = event.data;
-
-          if (
-            response?.protocol !== "workflow-studio:v1" ||
-            response?.requestId !== requestId ||
-            response?.type !== "WORKFLOW_LOAD_RESULT"
-          ) {
-            return;
-          }
-
-          cleanup();
-
-          if (
-            !response.ok ||
-            !response.workflow ||
-            !Array.isArray(response.workflow.nodes) ||
-            !Array.isArray(response.workflow.edges)
-          ) {
-            reject(new Error(response.error || "Could not load workflow"));
-            return;
-          }
-
-          resolve({
-            nodes: response.workflow.nodes,
-            edges: response.workflow.edges,
-          });
-        };
-
-        const cleanup = () => {
-          window.clearTimeout(timeout);
-          window.removeEventListener("message", handleMessage);
-        };
-
-        window.addEventListener("message", handleMessage);
-
-        window.parent.postMessage(
-          {
-            protocol: "workflow-studio:v1",
-            requestId,
-            type: "WORKFLOW_LOAD",
-            payload: { id: workflowId },
-            ...sessionFields(),
-          },
-          "*",
-        );
-      });
-    },
-    [],
-  );
-
+  // The page hands the workflow id down; load it once, straight from the backend.
   useEffect(() => {
+    const id = getWorkflowId();
+    if (!id) return;
+
+    setWorkflowId(id);
     let active = true;
 
-    const handleMessage = async (event: MessageEvent) => {
-      if (event.source !== window.parent) return;
-
-      const message = event.data;
-
-      if (
-        message?.protocol !== "workflow-studio:v1" ||
-        message?.type !== "INIT" ||
-        typeof message?.payload?.workflowId !== "string"
-      ) {
-        return;
-      }
-
-      const workflowId = message.payload.workflowId;
-
-      setStudioSession({ workflowId, token: message.payload.token });
-      setWorkflowId(workflowId);
-
-      try {
-        const workflow = await loadWorkflow(workflowId);
-
+    void loadWorkflow(id)
+      .then((workflow) => {
         if (!active) return;
-
-        setNodes(workflow.nodes);
+        setNodes(workflow.nodes as WorkflowNode[]);
         setEdges(workflow.edges);
-      } catch (error) {
+      })
+      .catch((error) => {
         if (!active) return;
-
         console.error("Could not load workflow:", error);
-
         toast.error(
           error instanceof Error ? error.message : "Could not load workflow",
         );
-      }
-    };
-
-    window.addEventListener("message", handleMessage);
-
-    // Tell the host that INIT can now be received.
-    window.parent.postMessage(
-      {
-        protocol: "workflow-studio:v1",
-        type: "READY",
-      },
-      "*",
-    );
+      });
 
     return () => {
       active = false;
-      window.removeEventListener("message", handleMessage);
     };
-  }, [loadWorkflow, setNodes, setEdges]);
+  }, [setNodes, setEdges]);
 
   const executeRun = useCallback(
     async (nodes: WorkflowNode[], edges: Edge[]) => {
@@ -356,40 +197,26 @@ export default function FlowCanvas() {
     [isRunning],
   );
 
+  // A run requested from outside the canvas (host event or the toolbar button).
   useEffect(() => {
-    const handleMessage = async (event: MessageEvent) => {
-      if (event.source !== window.parent) return;
-      const message = event.data;
+    if (!runNonce) return;
 
-      if (
-        message?.protocol !== "workflow-studio:v1" ||
-        message?.type !== "WORKFLOW_RUN" ||
-        typeof message?.payload?.workflowId !== "string"
-      ) {
-        return;
-      }
+    const id = getWorkflowId();
+    if (!id || isRunning) return;
 
-      if (isRunning) return;
-
-      try {
-        const workflow = await loadWorkflow(message.payload.workflowId);
-
-        setNodes(workflow.nodes);
+    void loadWorkflow(id)
+      .then((workflow) => {
+        setNodes(workflow.nodes as WorkflowNode[]);
         setEdges(workflow.edges);
-
         setPendingApproval(true);
-      } catch (error) {
+      })
+      .catch((error) => {
         console.error("Workflow execution request failed:", error);
         toast.error(
           error instanceof Error ? error.message : "Workflow execution failed",
         );
-      }
-    };
-
-    window.addEventListener("message", handleMessage);
-
-    return () => window.removeEventListener("message", handleMessage);
-  }, [isRunning, setNodes, setEdges, loadWorkflow]);
+      });
+  }, [runNonce, isRunning, setNodes, setEdges]);
 
   const handleRun = () => {
     setPendingApproval(true);
@@ -401,62 +228,14 @@ export default function FlowCanvas() {
     if (isSaving) return;
 
     if (!workflowId) {
-      console.error("Workflow ID is missing");
+      toast.error("Workflow ID is missing.");
       return;
     }
 
     setIsSaving(true);
 
-    const requestId = randomId();
-
     try {
-      await new Promise<void>((resolve, reject) => {
-        const timeout = window.setTimeout(() => {
-          cleanup();
-          reject(new Error("Save request timed out"));
-        }, 30_000);
-        const handleMessage = (event: MessageEvent) => {
-          if (event.source !== window.parent) return;
-          const response = event.data;
-          if (
-            response?.protocol !== "workflow-studio:v1" ||
-            response?.requestId !== requestId ||
-            response?.type !== "WORKFLOW_SAVE_RESULT"
-          ) {
-            return;
-          }
-
-          cleanup();
-
-          if (!response.ok) {
-            reject(new Error(response.error || "Could not save workflow"));
-            return;
-          }
-
-          resolve();
-        };
-
-        const cleanup = () => {
-          window.clearTimeout(timeout);
-          window.removeEventListener("message", handleMessage);
-        };
-
-        window.addEventListener("message", handleMessage);
-        window.parent.postMessage(
-          {
-            protocol: "workflow-studio:v1",
-            requestId,
-            type: "WORKFLOW_SAVE",
-            payload: {
-              id: workflowId,
-              nodes,
-              edges,
-            },
-            ...sessionFields(),
-          },
-          "*",
-        );
-      });
+      await saveWorkflow({ id: workflowId, nodes, edges });
       toast.success("Workflow saved successfully");
     } catch (error) {
       const err = error as Error;

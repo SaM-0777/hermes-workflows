@@ -1,15 +1,6 @@
-import { sessionFields } from "@/lib/studio-session";
-import { randomId } from "@/lib/random-id";
+import { host } from "@hermes/plugin-sdk";
 
+/** Route inside the app — the studio is a plugin page now, not a framed app. */
 export function navigateTo(path: string): void {
-  window.parent.postMessage(
-    {
-      protocol: "workflow-studio:v1",
-      requestId: randomId(),
-      type: "NAVIGATE",
-      payload: { path },
-      ...sessionFields(),
-    },
-    "*",
-  );
+  host.navigate(path);
 }

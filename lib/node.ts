@@ -1,8 +1,7 @@
 import z from "zod";
 import { type Node } from "@xyflow/react";
 
-import { sessionFields } from "@/lib/studio-session";
-import { randomId } from "@/lib/random-id";
+import { hostRest } from "@/lib/host";
 
 export const categories = [
   { value: "data", label: "Data" },
@@ -166,75 +165,27 @@ export async function runNode(
     throw new Error(`Node "${node.id}" has no valid Execution.`);
   }
 
-  const requestId = randomId();
-  return new Promise((resolve, reject) => {
-    const cleanup = () => {
-      window.removeEventListener("message", handleMessage);
-      window.clearTimeout(timeout);
-    };
-
-    const timeout = window.setTimeout(() => {
-      cleanup();
-      reject(new Error(`Node "${node.id}" execution timed out.`));
-    }, 300_000);
-
-    const handleMessage = (event: MessageEvent) => {
-      if (event.source !== window.parent || !isRecord(event.data)) {
-        return;
-      }
-
-      const message = event.data;
-
-      if (
-        message.protocol !== "workflow-studio:v1" ||
-        message.requestId !== requestId ||
-        message.type !== "RUN_NODE_RESULT"
-      ) {
-        return;
-      }
-
-      cleanup();
-
-      if (message.ok !== true) {
-        reject(
-          new Error(
-            typeof message.error === "string"
-              ? message.error
-              : `Node "${node.id}" execution failed.`,
-          ),
-        );
-        return;
-      }
-
-      if (
-        !isRecord(message.result) ||
-        typeof message.result.node_id !== "string" ||
-        message.result.status !== "completed" ||
-        !("output" in message.result)
-      ) {
-        reject(new Error("Invalid node execution response."));
-        return;
-      }
-
-      resolve(message.result);
-    };
-
-    window.addEventListener("message", handleMessage);
-    window.parent.postMessage(
-      {
-        protocol: "workflow-studio:v1",
-        requestId,
-        type: "RUN_NODE",
-        payload: {
-          nodeId: node.id,
-          code,
-          inputs,
-        },
-        ...sessionFields(),
-      },
-      "*",
-    );
+  // The backend runs the node in an execute_code kernel child; this returns its
+  // {node_id, status, output} envelope or throws with the child's message.
+  const result = await hostRest<Record<string, unknown>>("/run", {
+    method: "POST",
+    body: {
+      node_id: node.id,
+      code,
+      inputs,
+    },
   });
+
+  if (
+    !isRecord(result) ||
+    typeof result.node_id !== "string" ||
+    result.status !== "completed" ||
+    !("output" in result)
+  ) {
+    throw new Error("Invalid node execution response.");
+  }
+
+  return result;
 }
 
 export type NodeStatus = "idle" | "ready" | "running" | "success" | "error";

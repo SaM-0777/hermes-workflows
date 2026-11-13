@@ -44,8 +44,168 @@ class RunRequest(BaseModel):
     inputs: dict[str, Any] = Field(default_factory=dict)
 
 
+class SourceRequest(BaseModel):
+    source: str = Field(min_length=1)
+
+
 class NodeValidationError(Exception):
     pass
+
+
+# --- Editor helpers -------------------------------------------------------
+#
+# The node editor compiles nothing: syntax and metadata checks are pure AST work
+# here, so the studio ships without an in-browser Python runtime.
+
+_METADATA_KEYS = frozenset(
+    {"name", "description", "category", "inputs", "outputs", "parameters"}
+)
+_LITERAL_TYPE_NAMES = frozenset(
+    {
+        "Any",
+        "str",
+        "float",
+        "int",
+        "bool",
+        "dict",
+        "list",
+        "Image",
+        "Audio",
+        "Video",
+        "File",
+    }
+)
+
+
+def _execution_class(tree: ast.Module) -> ast.ClassDef:
+    found = next(
+        (
+            node
+            for node in tree.body
+            if isinstance(node, ast.ClassDef) and node.name == "Execution"
+        ),
+        None,
+    )
+    if found is None:
+        raise NodeValidationError("Could not find class Execution.")
+    return found
+
+
+def _literal(node: ast.AST) -> Any:
+    """The value of a literal annotation, or a ValueError the editor shows as-is."""
+    if isinstance(node, ast.Constant):
+        return node.value
+    if isinstance(node, ast.Name):
+        if node.id in _LITERAL_TYPE_NAMES:
+            return node.id
+        raise ValueError(f"Unsupported identifier: {node.id}")
+    if isinstance(node, ast.List):
+        return [_literal(item) for item in node.elts]
+    if isinstance(node, ast.Tuple):
+        return tuple(_literal(item) for item in node.elts)
+    if isinstance(node, ast.Dict):
+        result: dict[Any, Any] = {}
+        for key, value in zip(node.keys, node.values):
+            if key is None:
+                raise ValueError("Metadata must contain literal values.")
+            result[_literal(key)] = _literal(value)
+        return result
+    raise ValueError("Metadata must contain literal values.")
+
+
+@router.post("/validate")
+async def validate_source(body: SourceRequest):
+    """Syntax check for the editor. Parses only — nothing is executed."""
+    try:
+        ast.parse(body.source)
+    except SyntaxError as exc:
+        return {
+            "valid": False,
+            "diagnostics": [
+                {
+                    "message": exc.msg,
+                    "line": exc.lineno or 1,
+                    "column": max((exc.offset or 1) - 1, 0),
+                }
+            ],
+        }
+    return {"valid": True, "diagnostics": []}
+
+
+@router.post("/node-metadata")
+async def node_metadata(body: SourceRequest):
+    """The class-level literals `Execution` declares (name, io, parameters…)."""
+    try:
+        tree = ast.parse(body.source)
+        execution_class = _execution_class(tree)
+    except SyntaxError as exc:
+        raise HTTPException(
+            status_code=400,
+            detail={"type": "validation_error", "message": str(exc)},
+        ) from exc
+    except NodeValidationError as exc:
+        raise HTTPException(
+            status_code=400,
+            detail={"type": "validation_error", "message": str(exc)},
+        ) from exc
+
+    metadata: dict[str, Any] = {}
+    for statement in execution_class.body:
+        if not isinstance(statement, ast.AnnAssign):
+            continue
+        if not isinstance(statement.target, ast.Name):
+            continue
+
+        name = statement.target.id
+        if name not in _METADATA_KEYS:
+            continue
+
+        try:
+            metadata[name] = _literal(statement.value)
+        except (ValueError, TypeError) as exc:
+            raise HTTPException(
+                status_code=400,
+                detail={
+                    "type": "validation_error",
+                    "message": f"Execution.{name} must contain a literal value.",
+                },
+            ) from exc
+
+    return metadata
+
+
+@router.post("/node-methods")
+async def node_methods(body: SourceRequest):
+    """Source text of `run` / `build_output`, exactly as written in the class."""
+    try:
+        tree = ast.parse(body.source)
+        execution_class = _execution_class(tree)
+    except SyntaxError as exc:
+        raise HTTPException(
+            status_code=400,
+            detail={"type": "validation_error", "message": str(exc)},
+        ) from exc
+    except NodeValidationError as exc:
+        raise HTTPException(
+            status_code=400,
+            detail={"type": "validation_error", "message": str(exc)},
+        ) from exc
+
+    lines = body.source.splitlines()
+    methods: dict[str, str] = {}
+
+    for node in execution_class.body:
+        if not isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef)):
+            continue
+        if node.name not in ("run", "build_output"):
+            continue
+
+        start_line = min(
+            [node.lineno] + [decorator.lineno for decorator in node.decorator_list]
+        )
+        methods[node.name] = "\n".join(lines[start_line - 1 : node.end_lineno])
+
+    return methods
 
 
 # Printed by the driver so the result survives the tool's stdout capture intact.

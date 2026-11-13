@@ -29,7 +29,5 @@ provides_tools:
   - remove_workflow_edge
   - request_run_workflow
 provides_hooks:
-  # Gates request_run_workflow: the workflow's node code is shown for approval
-  # before the run is allowed.
   - pre_tool_call
 

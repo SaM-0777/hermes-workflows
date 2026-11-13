@@ -90,21 +90,26 @@ Hermes can use the registered workflow tools to construct the graph.
 
 ---
 
+## Architecture
+
+Workflow Studio's UI is **native plugin UI**: `desktop/plugin.js` renders the React app from `src/` directly into the Desktop window via the plugin SDK's page contributions. There is no `SandboxedFrame`, no `data:` URL and no message channel between the UI and the host — the studio calls its own backend namespace (`/api/plugins/hermes-workflow/*`) through `ctx.rest`.
+
+- `bun run release` builds both halves: `vite build` compiles the studio's stylesheet into `dist/assets/*.css`, then `scripts/build-plugin.ts` bundles `desktop/plugin.ts` — the app, React Flow, LangGraph, the UI kit and that stylesheet — into the single committed artifact `desktop/plugin.js`.
+- The stylesheet is injected into the app document at `register()` and removed on dispose (a disk plugin resolves no CSS import and ships no sibling assets).
+- `bun run dev` serves the studio standalone for UI work; `?api=<base>&workflowId=<id>` points it at a running copy of the backend (see `scripts/check-backend.sh` for a way to serve one locally).
+- `scripts/check-backend.sh` smoke-tests the Python side the way the gateway loads it: routes mounted, a node executed through `execute_code`, the editor's `/validate` / `/node-metadata` / `/node-methods` routes.
+
+---
+
 ## Security and Important Disclosures
 
 Workflow Studio is a development-oriented workflow execution environment. Users should understand how node execution works before running workflows.
 
 ### Python code execution
 
-Workflow nodes contain Python source code that is compiled and executed by the plugin-host backend.
+Workflow nodes contain Python source code. Node execution is handed to Hermes' own `execute_code` tool, so each run happens in a separate kernel child process with Hermes' scrubbed environment (PATH, HOME, LANG/LC_*, TMPDIR, SHELL and the project interpreter; credential-shaped variables are dropped), Hermes' approval guard and its configured timeout. Node source is compiled and invoked inside that child — never in the gateway process.
 
-The backend uses Python's `compile()` and `exec()` to load the node's `Execution` class and invokes its `build_output()` method.
-
-**This is not a Python sandbox.**
-
-The execution endpoint does not currently provide an isolated operating-system process or container for each node. Python code executes within the plugin backend's runtime environment and may have access to capabilities available to that process.
-
-Only run workflows and node definitions from sources you trust. Do not execute untrusted Python code.
+This is process-level separation, not a container jail: the child runs as your user, with that user's filesystem and network access. Only run workflows and node definitions from sources you trust. Do not execute untrusted Python code.
 
 ### Network access
 
@@ -112,9 +117,9 @@ Node execution code can use network capabilities available to its Python runtime
 
 ### Data and persistence
 
-Workflow and reusable node definitions are stored through the plugin's storage layer. They persist independently of the active editor session.
+Workflow and reusable node definitions are stored through the plugin's backend routes (`/workflows`, `/node-library`) and persist independently of the active editor session.
 
-Node execution receives the connected upstream outputs as inputs. The plugin's execution endpoint currently passes empty parameter and context dictionaries to the node implementation.
+Node execution receives the connected upstream outputs as inputs. The execution endpoint passes empty parameter and context dictionaries to the node implementation.
 
 ### Credentials
 

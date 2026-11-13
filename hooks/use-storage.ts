@@ -1,87 +1,12 @@
 import { useCallback, useEffect, useState } from "react";
+import { hostRest } from "@/lib/host";
 import type { NodeData } from "@/lib/node";
-import { randomId } from "@/lib/random-id";
-import { awaitStudioSession, sessionFields } from "@/lib/studio-session";
-
-const REQUEST_TIMEOUT = 30_000;
-const PROTOCOL = "workflow-studio:v1";
 
 export interface SavedNode {
   id: string;
   data: NodeData;
   createdAt: string;
   updatedAt: string;
-}
-
-type RequestType =
-  | "NODE_LIBRARY_LIST"
-  | "NODE_LIBRARY_SAVE"
-  | "NODE_LIBRARY_UPDATE"
-  | "NODE_LIBRARY_DELETE";
-
-interface HostResponse {
-  protocol: typeof PROTOCOL;
-  requestId: string;
-  type: `${RequestType}_RESULT`;
-  ok: boolean;
-  error?: string;
-  nodes?: SavedNode[];
-  node?: SavedNode;
-  id?: string;
-}
-
-async function requestHost<T>(
-  type: RequestType,
-  payload: Record<string, unknown> = {},
-): Promise<T> {
-  await awaitStudioSession();
-
-  return new Promise((resolve, reject) => {
-    const requestId = randomId();
-
-    const cleanup = () => {
-      window.removeEventListener("message", handleMessage);
-      window.clearTimeout(timeout);
-    };
-
-    const handleMessage = (event: MessageEvent) => {
-      if (event.source !== window.parent) return;
-      const response = event.data as HostResponse;
-      if (
-        !response ||
-        response.protocol !== PROTOCOL ||
-        response.requestId !== requestId ||
-        response.type !== `${type}_RESULT`
-      ) {
-        return;
-      }
-
-      cleanup();
-      if (!response.ok) {
-        reject(new Error(response.error || "Host request failed"));
-        return;
-      }
-
-      resolve(response as T);
-    };
-
-    const timeout = window.setTimeout(() => {
-      cleanup();
-      reject(new Error(`Request timed out: ${type}`));
-    }, REQUEST_TIMEOUT);
-
-    window.addEventListener("message", handleMessage);
-    window.parent.postMessage(
-      {
-        protocol: PROTOCOL,
-        requestId,
-        type,
-        payload,
-        ...sessionFields(),
-      },
-      "*",
-    );
-  });
 }
 
 export interface UseStorageReturn {
@@ -94,6 +19,7 @@ export interface UseStorageReturn {
   refresh: () => Promise<void>;
 }
 
+/** Node library, straight from the plugin backend (ctx.rest). */
 export function useStorage(): UseStorageReturn {
   const [nodes, setNodes] = useState<SavedNode[]>([]);
   const [isLoading, setIsLoading] = useState(true);
@@ -101,15 +27,15 @@ export function useStorage(): UseStorageReturn {
 
   const refresh = useCallback(async () => {
     try {
-      const response = await requestHost<{ nodes: SavedNode[] }>(
-        "NODE_LIBRARY_LIST",
-      );
+      const response = await hostRest<SavedNode[]>("/node-library", {
+        method: "GET",
+      });
 
-      if (!Array.isArray(response.nodes)) {
+      if (!Array.isArray(response)) {
         throw new Error("Invalid node library response");
       }
 
-      setNodes(response.nodes);
+      setNodes(response);
       setError(null);
     } catch (err) {
       setError(
@@ -125,37 +51,37 @@ export function useStorage(): UseStorageReturn {
   }, [refresh]);
 
   const saveNode = useCallback(async (data: NodeData) => {
-    const response = await requestHost<{ node: SavedNode }>(
-      "NODE_LIBRARY_SAVE",
-      { data },
-    );
+    const node = await hostRest<SavedNode>("/node-library/nodes", {
+      method: "POST",
+      body: { data },
+    });
 
-    if (!response.node) {
-      throw new Error("Host did not return the saved node");
+    if (!node) {
+      throw new Error("The backend did not return the saved node");
     }
 
-    setNodes((current) => [...current, response.node!]);
+    setNodes((current) => [...current, node]);
 
-    return response.node;
+    return node;
   }, []);
 
   const updateNode = useCallback(async (id: string, data: NodeData) => {
-    const response = await requestHost<{ node: SavedNode }>(
-      "NODE_LIBRARY_UPDATE",
-      { id, data },
-    );
+    const node = await hostRest<SavedNode>(`/node-library/nodes/${id}`, {
+      method: "PUT",
+      body: { data },
+    });
 
-    if (!response.node) {
-      throw new Error("Host did not return the updated node");
+    if (!node) {
+      throw new Error("The backend did not return the updated node");
     }
 
     setNodes((current) =>
-      current.map((node) => (node.id === id ? response.node! : node)),
+      current.map((entry) => (entry.id === id ? node : entry)),
     );
   }, []);
 
   const deleteNode = useCallback(async (id: string) => {
-    await requestHost<{ id: string }>("NODE_LIBRARY_DELETE", { id });
+    await hostRest<string>(`/node-library/nodes/${id}`, { method: "DELETE" });
 
     setNodes((current) => current.filter((node) => node.id !== id));
   }, []);
