@@ -6,10 +6,6 @@ Complex tasks often involve multiple steps, dependencies, and parallel operation
 
 ---
 
-> **Beta:** Workflow Studio is currently in beta and is available on macOS only. Support for other platforms will be available in upcoming updates.
-
----
-
 ## Showcase
 
 Explore workflows built and executed with Hermes Workflow Studio. Each showcase includes screenshots, the original prompt, and the workflow JSON to import and run.
