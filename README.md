@@ -92,12 +92,7 @@ Hermes can use the registered workflow tools to construct the graph.
 
 ## Architecture
 
-Workflow Studio's UI is **native plugin UI**: `desktop/plugin.js` renders the React app from `src/` directly into the Desktop window via the plugin SDK's page contributions. There is no `SandboxedFrame`, no `data:` URL and no message channel between the UI and the host — the studio calls its own backend namespace (`/api/plugins/hermes-workflow/*`) through `ctx.rest`.
-
-- `bun run release` builds both halves: `vite build` compiles the studio's stylesheet into `dist/assets/*.css`, then `scripts/build-plugin.ts` bundles `desktop/plugin.ts` — the app, React Flow, LangGraph, the UI kit and that stylesheet — into the single committed artifact `desktop/plugin.js`.
-- The stylesheet is injected into the app document at `register()` and removed on dispose (a disk plugin resolves no CSS import and ships no sibling assets).
-- `bun run dev` serves the studio standalone for UI work; `?api=<base>&workflowId=<id>` points it at a running copy of the backend (see `scripts/check-backend.sh` for a way to serve one locally).
-- `scripts/check-backend.sh` smoke-tests the Python side the way the gateway loads it: routes mounted, a node executed through `execute_code`, the editor's `/validate` / `/node-metadata` / `/node-methods` routes.
+Workflow Studio's UI is **native plugin UI**: `desktop/plugin.js` renders the React app from `src/` directly into the Desktop window via the plugin SDK's page contributions.
 
 ---
 
