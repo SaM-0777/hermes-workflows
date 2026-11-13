@@ -27,5 +27,7 @@ provides_tools:
   - duplicate_workflow_node
   - add_workflow_edge
   - remove_workflow_edge
-  - run_workflow
+  - request_run_workflow
+provides_hooks:
+  - pre_tool_call
 

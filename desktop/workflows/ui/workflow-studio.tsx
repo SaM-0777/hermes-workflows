@@ -1,4 +1,4 @@
-import { Button, Codicon, SandboxedFrame, host } from "@hermes/plugin-sdk";
+import { Button, Codicon, host } from "@hermes/plugin-sdk";
 import {
   useCallback,
   useEffect,
@@ -7,11 +7,9 @@ import {
   type ChangeEvent,
   type KeyboardEvent,
 } from "react";
-import {
-  handleWorkflowRequest,
-  isWorkflowMessage,
-  sendResponse,
-} from "../lib/workflow-protocol";
+
+import StudioApp from "../../../src/App";
+import { setActiveWorkflowId, setHostRest } from "../../../lib/host";
 import {
   isRecord,
   isWorkflowDocument,
@@ -20,20 +18,11 @@ import {
 import {
   loadWorkflow,
   saveWorkflow,
-  type WorkflowFiles,
+  type WorkflowRest,
 } from "../lib/workflow-storage";
 
-const STUDIO_URL = "http://localhost:5173";
-
 interface WorkflowStudioContext {
-  files: WorkflowFiles;
-  rest: (
-    path: string,
-    options: {
-      method: "POST";
-      body: Record<string, unknown>;
-    },
-  ) => Promise<unknown>;
+  rest: WorkflowRest;
 }
 
 export interface WorkflowStudioPageProps {
@@ -41,7 +30,6 @@ export interface WorkflowStudioPageProps {
 }
 
 export function WorkflowStudioPage({ ctx }: WorkflowStudioPageProps) {
-  const frameRef = useRef<HTMLIFrameElement | null>(null);
   const workflowRef = useRef<WorkflowDocument | null>(null);
   const hashQuery = window.location.hash.includes("?")
     ? window.location.hash.slice(window.location.hash.indexOf("?"))
@@ -49,16 +37,20 @@ export function WorkflowStudioPage({ ctx }: WorkflowStudioPageProps) {
   const workflowId =
     new URLSearchParams(hashQuery).get("workflowId") ??
     new URLSearchParams(window.location.search).get("workflowId");
-  const studioUrl = workflowId
-    ? `${STUDIO_URL}/?workflowId=${encodeURIComponent(workflowId)}`
-    : STUDIO_URL;
+
   const name = workflowId ? `workflow-${workflowId}` : "Workflow Studio";
   const [workflow, setWorkflow] = useState<WorkflowDocument | null>(null);
   const [nameDraft, setNameDraft] = useState(name);
   const [loading, setLoading] = useState(false);
+  const [runNonce, setRunNonce] = useState(0);
   const [nameStatus, setNameStatus] = useState<"idle" | "saving" | "saved">(
     "saved",
   );
+
+  // Installed during render, not in an effect: the studio's own effects run
+  // before this page's effects, so a first fetch would otherwise find no host.
+  setHostRest(ctx.rest);
+  setActiveWorkflowId(workflowId ?? null);
 
   useEffect(() => {
     let active = true;
@@ -73,7 +65,9 @@ export function WorkflowStudioPage({ ctx }: WorkflowStudioPageProps) {
       };
     }
 
-    void loadWorkflow(ctx.files, workflowId)
+    setLoading(true);
+
+    void loadWorkflow(ctx.rest, workflowId)
       .then((loaded) => {
         if (!active) return;
         workflowRef.current = loaded;
@@ -102,7 +96,7 @@ export function WorkflowStudioPage({ ctx }: WorkflowStudioPageProps) {
     return () => {
       active = false;
     };
-  }, [ctx.files, name, workflowId]);
+  }, [ctx.rest, name, workflowId]);
 
   const saveName = useCallback(
     async (name: string) => {
@@ -111,7 +105,7 @@ export function WorkflowStudioPage({ ctx }: WorkflowStudioPageProps) {
 
       setNameStatus("saving");
       try {
-        const saved = await saveWorkflow(ctx.files, {
+        const saved = await saveWorkflow(ctx.rest, {
           id: current.id,
           nodes: current.nodes,
           edges: current.edges,
@@ -125,7 +119,7 @@ export function WorkflowStudioPage({ ctx }: WorkflowStudioPageProps) {
         setNameStatus("idle");
       }
     },
-    [ctx.files, workflowId],
+    [ctx.rest, workflowId],
   );
 
   useEffect(() => {
@@ -141,117 +135,20 @@ export function WorkflowStudioPage({ ctx }: WorkflowStudioPageProps) {
     return () => window.clearTimeout(timer);
   }, [name, nameDraft, saveName, workflow]);
 
-  useEffect(() => {
-    const unsubscribe = host.onEvent(
-      "plugin.hermes-workflow.workflow.run",
-      (event: { payload?: unknown }) => {
-        const payload = event.payload;
-        if (!isRecord(payload)) return;
-
-        const workflowId = payload.workflow_id;
-        if (typeof workflowId !== "string" || !workflowId.trim()) return;
-
-        const frameWindow = frameRef.current?.contentWindow;
-        if (!frameWindow) return;
-
-        frameWindow.postMessage(
-          {
-            protocol: "workflow-studio:v1",
-            requestId: crypto.randomUUID(),
-            type: "WORKFLOW_RUN",
-            payload: { workflowId },
-          },
-          "*",
-        );
-      },
-    );
-
-    return unsubscribe;
-  }, []);
-
-  useEffect(() => {
-    const handleMessage = async (event: MessageEvent) => {
-      const frameWindow = frameRef.current?.contentWindow;
-      if (!frameWindow || event.source !== frameWindow) return;
-
-      const message: unknown = event.data;
-      if (!isRecord(message) || !isWorkflowMessage(message)) return;
-
-      try {
-        if (message.type === "NAVIGATE") {
-          const path = message.payload?.path;
-          if (typeof path === "string" && path.startsWith("/")) {
-            host.navigate(path);
-          }
-          return;
-        }
-
-        if (message.type === "RUN_NODE") {
-          const payload = message.payload;
-          if (
-            !isRecord(payload) ||
-            typeof payload.nodeId !== "string" ||
-            typeof payload.code !== "string"
-          ) {
-            throw new Error("Invalid RUN_NODE request.");
-          }
-
-          const result = await ctx.rest("/run", {
-            method: "POST",
-            body: {
-              node_id: payload.nodeId,
-              code: payload.code,
-              inputs: isRecord(payload.inputs) ? payload.inputs : {},
-            },
-          });
-
-          sendResponse(frameWindow, message.requestId, "RUN_NODE_RESULT", {
-            ok: true,
-            result,
-          });
-
-          return;
-        }
-
-        //if (message.type === "WORKFLOW_RUN_PROGRESS") {
-        //  const payload = message.payload;
-        //  if (!isRecord(payload)) {
-        //    throw new Error("Invalid workflow progress payload.");
-        //  }
-        //  host.emitEvent("workflow.run.progress", payload);
-        //  return;
-        //}
-
-        //if (message.type === "WORKFLOW_RUN_RESULT") {
-        //  const payload = message.payload;
-        //  if (!isRecord(payload)) {
-        //    throw new Error("Invalid workflow result payload.");
-        //  }
-        //  host.emitEvent("workflow.run.result", payload);
-        //  return;
-        //}
-
-        const result = await handleWorkflowRequest(ctx.files, message);
-        if (isRecord(result.workflow) && isWorkflowDocument(result.workflow)) {
-          workflowRef.current = result.workflow;
-          setWorkflow(result.workflow);
-        }
-        sendResponse(frameWindow, message.requestId, `${message.type}_RESULT`, {
-          ok: true,
-          ...result,
-        });
-      } catch (error) {
-        sendResponse(frameWindow, message.requestId, `${message.type}_RESULT`, {
-          ok: false,
-          error:
-            error instanceof Error ? error.message : "Unknown workflow error",
-        });
-      }
-    };
-
-    window.addEventListener("message", handleMessage);
-    return () => window.removeEventListener("message", handleMessage);
-  }, [ctx]);
+  // The agent can ask this pane to run the workflow it is editing.
+  useEffect(
+    () =>
+      host.onEvent(
+        "plugin.hermes-workflow.workflow.run",
+        (event: { payload?: unknown }) => {
+          const payload = event.payload;
+          if (!isRecord(payload)) return;
+          if (typeof payload.workflow_id !== "string") return;
+          setRunNonce((current) => current + 1);
+        },
+      ),
+    [],
+  );
 
   return (
     <div className="flex h-full min-h-0 w-full flex-col overflow-hidden">
@@ -292,12 +189,13 @@ export function WorkflowStudioPage({ ctx }: WorkflowStudioPageProps) {
         </span>
       </div>
       <div className="relative min-h-0 flex-1">
-        <SandboxedFrame
-          ref={frameRef}
-          src={studioUrl}
-          title="Workflow Studio"
-          className="block size-full border-0"
-        />
+        {workflowId ? (
+          <StudioApp runNonce={runNonce} />
+        ) : (
+          <div className="flex h-full items-center justify-center text-sm text-(--ui-text-tertiary)">
+            Open a workflow from the Workflows library.
+          </div>
+        )}
       </div>
     </div>
   );

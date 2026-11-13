@@ -10,6 +10,7 @@ import {
   AlertDialogTitle,
 } from "./ui/alert-dialog";
 import { navigateTo } from "@/lib/navigation";
+import { getWorkflowId, hostRest } from "@/lib/host";
 
 export interface DeleteWorkflowProps {
   open: boolean;
@@ -24,11 +25,7 @@ export default function DeleteWorkflow({
   const [deleteError, setDeleteError] = useState<string | null>(null);
 
   const confirmDelete = async () => {
-    const workflowId = new URLSearchParams(window.location.search).get(
-      "workflowId",
-    );
-
-    console.log({ workflowId });
+    const workflowId = getWorkflowId();
 
     if (!workflowId) {
       setDeleteError("Workflow ID is missing.");
@@ -38,54 +35,10 @@ export default function DeleteWorkflow({
     setIsDeleting(true);
     setDeleteError(null);
 
-    const requestId = crypto.randomUUID();
-
     try {
-      const result = await new Promise<{ ok: boolean; error?: string }>(
-        (resolve, reject) => {
-          const timeout = window.setTimeout(() => {
-            cleanup();
-            reject(new Error("Delete request timed out."));
-          }, 30_000);
+      await hostRest<string>(`/workflows/${workflowId}`, { method: "DELETE" });
 
-          const cleanup = () => {
-            window.clearTimeout(timeout);
-            window.removeEventListener("message", handleMessage);
-          };
-
-          const handleMessage = (event: MessageEvent) => {
-            if (event.source !== window.parent) return;
-            const response = event.data;
-            if (
-              response?.protocol !== "workflow-studio:v1" ||
-              response?.requestId !== requestId ||
-              response?.type !== "WORKFLOW_DELETE_RESULT"
-            ) {
-              return;
-            }
-
-            cleanup();
-            resolve(response);
-          };
-
-          window.addEventListener("message", handleMessage);
-          window.parent.postMessage(
-            {
-              protocol: "workflow-studio:v1",
-              requestId,
-              type: "WORKFLOW_DELETE",
-              payload: { id: workflowId },
-            },
-            "*",
-          );
-        },
-      );
-
-      if (!result.ok) {
-        throw new Error(result.error || "Could not delete workflow.");
-      }
-
-      // navigate back to the library.
+      // Back to the library.
       navigateTo("/workflows");
     } catch (error) {
       setDeleteError(

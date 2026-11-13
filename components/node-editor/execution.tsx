@@ -1,4 +1,3 @@
-import Editor from "@monaco-editor/react";
 import { useState } from "react";
 import { Button } from "../ui/button";
 import {
@@ -89,29 +88,28 @@ export function ExecutionTab({
       </div>
 
       <div className="min-h-0 flex-1">
-        <Editor
-          width="100%"
-          height="100%"
-          language="python"
-          theme="vs-dark"
-          value={value}
-          onChange={(code) => handleCodeChange(code ?? "")}
-          options={{
-            automaticLayout: true,
-            minimap: { enabled: false },
-            fontSize: 13,
-            lineHeight: 21,
-            tabSize: 4,
-            insertSpaces: true,
-            wordWrap: "on",
-            scrollBeyondLastLine: false,
-            padding: { top: 16, bottom: 16 },
-            renderLineHighlight: "line",
-            scrollbar: {
-              verticalScrollbarSize: 8,
-              horizontalScrollbarSize: 8,
-            },
+        {/* A plain editor on purpose: Monaco loads itself from a CDN by
+            injecting a <script>, which the Desktop plugin surface refuses
+            (catalog rule 8). */}
+        <textarea
+          aria-label="Node Python source"
+          className="size-full resize-none border-0 bg-[#1e1e1e] p-4 font-mono text-[13px] leading-[21px] text-[#d4d4d4] outline-none"
+          onChange={(event) => handleCodeChange(event.target.value)}
+          onKeyDown={(event) => {
+            if (event.key !== "Tab") return;
+            event.preventDefault();
+            const field = event.currentTarget;
+            const { selectionStart, selectionEnd, value: current } = field;
+            const next = `${current.slice(0, selectionStart)}    ${current.slice(selectionEnd)}`;
+            handleCodeChange(next);
+            requestAnimationFrame(() => {
+              field.selectionStart = selectionStart + 4;
+              field.selectionEnd = selectionStart + 4;
+            });
           }}
+          spellCheck={false}
+          value={value}
+          wrap="on"
         />
       </div>
 

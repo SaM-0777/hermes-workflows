@@ -1,7 +1,15 @@
 @import "tailwindcss";
+@import "@xyflow/react/dist/style.css";
 @import "tw-animate-css";
 @import "shadcn/tailwind.css";
 @import "@fontsource-variable/geist";
+
+/* Tailwind scans the project for class candidates. The built plugin embeds a
+   copy of this stylesheet, so scanning it feeds old utilities back in (and drags
+   shadcn's removed slot variants back into the output). Scan sources only. */
+@source not "../desktop";
+@source not "../dist";
+@source not "../scripts";
 
 @custom-variant dark (&:is(.dark *));
 

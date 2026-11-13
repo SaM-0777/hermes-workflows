@@ -1,12 +1,20 @@
 import { ROUTES_AREA, SIDEBAR_NAV_AREA } from "@hermes/plugin-sdk";
 import { jsx } from "react/jsx-runtime";
+import { setHostRest } from "../lib/host";
+import { installStudioStyles } from "./studio-styles";
 import { WorkflowLibraryPage } from "./workflows/ui/workflow-library";
 import { WorkflowStudioPage } from "./workflows/ui/workflow-studio";
-import type { WorkflowFiles } from "./workflows/lib/workflow-storage";
 
 interface PluginContext {
-  files: WorkflowFiles;
+  rest: <T = unknown>(
+    path: string,
+    options?: {
+      method?: "GET" | "POST" | "PUT" | "DELETE";
+      body?: Record<string, unknown>;
+    },
+  ) => Promise<T>;
   registerMany: (contributions: unknown[]) => () => void;
+  onDispose: (fn: () => void) => void;
 }
 
 export default {
@@ -14,6 +22,12 @@ export default {
   name: "Workflow Studio",
 
   register(ctx: PluginContext) {
+    // The studio renders in the app's own React tree, so it calls the plugin's
+    // backend through this ctx instead of a frame message channel.
+    setHostRest(ctx.rest);
+    ctx.onDispose(() => setHostRest(null));
+    ctx.onDispose(installStudioStyles());
+
     ctx.registerMany([
       {
         id: "workflows-page",

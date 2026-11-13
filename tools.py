@@ -3,6 +3,12 @@ import json
 from pathlib import Path
 import re
 import uuid
+import logging
+from plugins.plugin_storage import plugin_data_dir
+
+logger = logging.getLogger(__name__)
+
+WORKFLOW_DIR = plugin_data_dir("hermes-workflow")
 
 _NODE_NAME_PATTERN = re.compile(r"^[a-zA-Z][a-zA-Z0-9_-]*$")
 _DATA_TYPES = {
@@ -18,17 +24,8 @@ _DATA_TYPES = {
     "File",
 }
 
-NODE_LIBRARY_PATH = (
-    Path.home()
-    / "Library"
-    / "Application Support"
-    / "Hermes"
-    / "plugin-files"
-    / "data"
-    / "hermes-workflow"
-    / "node-library.json"
-)
 
+NODE_LIBRARY_PATH = WORKFLOW_DIR / "node-library.json"
 
 def _now():
     return (
@@ -359,15 +356,6 @@ def delete_node(params, **kwargs):
 
 # Workflow Tools
 WORKFLOW_PREFIX = "workflow-"
-WORKFLOW_DIR = Path(
-    Path.home()
-    / "Library"
-    / "Application Support"
-    / "Hermes"
-    / "plugin-files"
-    / "data"
-    / "hermes-workflow"
-)
 
 
 def _workflow_path(workflow_id):
@@ -993,8 +981,8 @@ def remove_workflow_edge(params, **kwargs):
         return _error(str(exc))
 
 
-def run_workflow(params, **kwargs):
-    from hermes_cli.plugin_events import broadcast_plugin_event
+def request_run_workflow(params, **kwargs):
+    from hermes_cli.plugin_events import broadcast_plugin_event # pyright: ignore[reportMissingImports]
 
     workflow_id = params.get("workflow_id")
     if not isinstance(workflow_id, str) or not workflow_id.strip():

@@ -1,7 +1,6 @@
 import type { Edge, Node } from "@xyflow/react";
 
-const PROTOCOL = "workflow-studio:v1";
-const REQUEST_TIMEOUT = 15_000;
+import { hostRest } from "@/lib/host";
 
 export type Workflow = {
   id: string;
@@ -17,106 +16,17 @@ export type WorkflowSummary = Pick<
   "id" | "name" | "createdAt" | "updatedAt"
 >;
 
-type PendingRequest = {
-  resolve: (value: unknown) => void;
-  reject: (error: Error) => void;
-  timeout: ReturnType<typeof setTimeout>;
-};
-
-const pendingRequests = new Map<string, PendingRequest>();
-
-function isRecord(value: unknown): value is Record<string, unknown> {
-  return value !== null && typeof value === "object" && !Array.isArray(value);
-}
-
-// Receive responses from the native Hermes plugin.
-window.addEventListener("message", (event: MessageEvent<unknown>) => {
-  if (event.source !== window.parent) return;
-
-  const message = event.data;
-
-  if (
-    !isRecord(message) ||
-    message.protocol !== PROTOCOL ||
-    typeof message.requestId !== "string" ||
-    typeof message.type !== "string" ||
-    !message.type.endsWith("_RESULT")
-  ) {
-    return;
-  }
-
-  const pending = pendingRequests.get(message.requestId);
-
-  if (!pending) return;
-
-  clearTimeout(pending.timeout);
-  pendingRequests.delete(message.requestId);
-
-  if (message.ok !== true) {
-    pending.reject(
-      new Error(
-        typeof message.error === "string"
-          ? message.error
-          : "Workflow operation failed",
-      ),
-    );
-    return;
-  }
-
-  pending.resolve(message);
-});
-
-function request<T>(
-  type: string,
-  payload: Record<string, unknown> = {},
-): Promise<T> {
-  return new Promise((resolve, reject) => {
-    if (window.parent === window) {
-      reject(new Error("Workflow Studio must run inside Hermes Desktop"));
-      return;
-    }
-
-    const requestId = crypto.randomUUID();
-
-    const timeout = setTimeout(() => {
-      pendingRequests.delete(requestId);
-      reject(new Error(`Request timed out: ${type}`));
-    }, REQUEST_TIMEOUT);
-
-    pendingRequests.set(requestId, {
-      resolve: (value) => resolve(value as T),
-      reject,
-      timeout,
-    });
-
-    window.parent.postMessage(
-      {
-        protocol: PROTOCOL,
-        requestId,
-        type,
-        payload,
-      },
-      "*",
-    );
-  });
-}
+// Straight to the plugin's own backend routes; ctx.rest is installed by register().
 
 export async function listWorkflows(): Promise<WorkflowSummary[]> {
-  const result = await request<{ workflows: WorkflowSummary[] }>(
-    "WORKFLOW_LIST",
-  );
-
-  return result.workflows;
+  return hostRest<WorkflowSummary[]>("/workflows", { method: "GET" });
 }
 
-export async function createWorkflow(
-  name?: string,
-): Promise<Workflow> {
-  const result = await request<{ workflow: Workflow }>("WORKFLOW_CREATE", {
-    name,
+export async function createWorkflow(name?: string): Promise<Workflow> {
+  return hostRest<Workflow>("/workflows", {
+    method: "POST",
+    body: { name },
   });
-
-  return result.workflow;
 }
 
 export async function saveWorkflow(
@@ -124,22 +34,20 @@ export async function saveWorkflow(
     name?: string;
   },
 ): Promise<Workflow> {
-  const result = await request<{ workflow: Workflow }>(
-    "WORKFLOW_SAVE",
-    workflow,
-  );
-
-  return result.workflow;
+  return hostRest<Workflow>(`/workflows/${workflow.id}`, {
+    method: "PUT",
+    body: {
+      name: workflow.name,
+      nodes: workflow.nodes,
+      edges: workflow.edges,
+    },
+  });
 }
 
 export async function loadWorkflow(id: string): Promise<Workflow> {
-  const result = await request<{ workflow: Workflow }>("WORKFLOW_LOAD", { id });
-
-  return result.workflow;
+  return hostRest<Workflow>(`/workflows/${id}`, { method: "GET" });
 }
 
 export async function deleteWorkflow(id: string): Promise<string> {
-  const result = await request<{ id: string }>("WORKFLOW_DELETE", { id });
-
-  return result.id;
+  return hostRest<string>(`/workflows/${id}`, { method: "DELETE" });
 }
