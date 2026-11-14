@@ -16,8 +16,8 @@ export const dataTypes = [
   "Text",
   "Dataset",
   "Images",
-  //"Videos",
-  //"Audios",
+  "Videos",
+  "Audios",
   //"Files",
   //"JSON",
 ] as const;

@@ -48,9 +48,10 @@ export async function validatePython(
 }
 
 // Python annotation -> studio type. `str` covers both Text and Dataset (a dataset
-// is a path or URL), `list` covers the file collections, `dict` is JSON. Legacy
-// numeric/bool annotations from older nodes land on JSON, which accepts scalars.
-const pythonToUiType: Record<string, (typeof dataTypes)[number]> = {
+// is a path or URL), `dict` is JSON, and `list` covers the file collections.
+// Annotations this studio has no field for (`Files`, `JSON`) resolve to nothing,
+// so the import fails loudly instead of silently editing the wrong field.
+const pythonToUiType: Record<string, string> = {
   str: "Text",
   dict: "JSON",
   list: "Files",
@@ -63,6 +64,28 @@ const pythonToUiType: Record<string, (typeof dataTypes)[number]> = {
   Video: "Videos",
   File: "Files",
 };
+
+// A `list` annotation says nothing about the kind, so media ports carry the kind
+// the codegen emitted (`"media": "image"`) and that decides the field.
+const mediaToUiType: Record<string, string> = {
+  image: "Images",
+  video: "Videos",
+  audio: "Audios",
+};
+
+type UiType = (typeof dataTypes)[number];
+
+function isUiType(value: unknown): value is UiType {
+  return typeof value === "string" && (dataTypes as readonly string[]).includes(value);
+}
+
+function uiTypeOf(type: unknown, media: unknown): UiType | undefined {
+  const byMedia =
+    typeof media === "string" ? mediaToUiType[media.toLowerCase()] : undefined;
+  const candidate =
+    byMedia ?? (typeof type === "string" ? pythonToUiType[type] : undefined);
+  return isUiType(candidate) ? candidate : undefined;
+}
 
 function toFormDefaultValue(value: unknown): string {
   if (value === null || value === undefined) return "";
@@ -104,9 +127,11 @@ export async function extractPythonDefinition(
         throw new Error("Each input and output must define a name and type.");
       }
 
-      const type = pythonToUiType[port.type];
+      const type = uiTypeOf(port.type, port.media);
       if (!type) {
-        throw new Error(`Unsupported Python type: ${port.type}`);
+        throw new Error(
+          `Unsupported Python type: ${port.type}. Media ports carry "media": "image" | "video" | "audio".`,
+        );
       }
 
       return {
@@ -132,7 +157,7 @@ export async function extractPythonDefinition(
       if (typeof value.type !== "string") {
         throw new Error(`Parameter "${name}" is missing its type.`);
       }
-      const type = pythonToUiType[value.type];
+      const type = uiTypeOf(value.type, value.media);
       if (!type) {
         throw new Error(
           `Unsupported Python type "${value.type}" for parameter "${name}".`,

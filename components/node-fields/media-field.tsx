@@ -1,6 +1,15 @@
-import { useRef, useState, type DragEvent } from "react";
-import { FileUp, Upload, X } from "lucide-react";
+import { useMemo, useRef, useState, type DragEvent } from "react";
+import { FileUp, Loader2, Upload, X } from "lucide-react";
 import { cn } from "@/lib/utils";
+import {
+  fileNameOf,
+  matchesAccept,
+  mergeFileRefs,
+  parseFileRefs,
+  pathForDroppedFile,
+  pickMediaPaths,
+  serializeFileRefs,
+} from "@/lib/file-refs";
 import { Button } from "../ui/button";
 
 export interface MediaFieldProps {
@@ -14,15 +23,13 @@ export interface MediaFieldProps {
   invalid?: boolean;
 }
 
-function parseFileRefs(value) {
-  const ref = useRef(null)
-  return ref
-}
-
 /**
- * File picker for the media and file parameter types. References are stored as a
- * JSON array of absolute paths (see file-refs.ts), which is what the node's
- * Python receives.
+ * File picker for the media and file parameter types.
+ *
+ * The stored value is a JSON array of absolute paths (see `lib/file-refs.ts`),
+ * which is exactly what the node's Python receives and what its generated
+ * `ImageFiles` / `VideoFiles` / `AudioFiles` loader turns back into real files.
+ * The files stay where the user keeps them — attached by path, nothing copied.
  */
 export function MediaField({
   value,
@@ -32,52 +39,108 @@ export function MediaField({
   noun,
   invalid,
 }: MediaFieldProps) {
-  const inputRef = useRef<HTMLInputElement>(null);
+  // dragenter/dragleave fire for every child element; the depth keeps the
+  // highlight on until the pointer really leaves the zone.
+  const dragDepth = useRef(0);
   const [dragging, setDragging] = useState(false);
-  const refs = parseFileRefs(value);
+  const [picking, setPicking] = useState(false);
+  const [error, setError] = useState<string | null>(null);
 
-  function add(files: FileList | null) {
-    if (!files?.length) return;
-    const picked = Array.from(files).map(fileRefFor);
-    // Single-value fields replace; multi-value fields append without duplicates.
-    onChange(
-      serializeFileRefs(
-        multiple
-          ? [...new Set([...refs, ...picked])]
-          : [picked[picked.length - 1]],
-      ),
-    );
+  const refs = useMemo(() => parseFileRefs(value), [value]);
+
+  function commit(paths: string[]) {
+    if (paths.length) onChange(mergeFileRefs(refs, paths, multiple));
+  }
+
+  async function pick() {
+    setError(null);
+    setPicking(true);
+    try {
+      commit(await pickMediaPaths({ accept, noun, multiple }));
+    } catch (pickError) {
+      setError(
+        pickError instanceof Error
+          ? pickError.message
+          : "Could not open the file picker.",
+      );
+    } finally {
+      setPicking(false);
+    }
+  }
+
+  function addDropped(files: File[]) {
+    if (!files.length) return;
+
+    const accepted = accept
+      ? files.filter((file) => matchesAccept(file, accept))
+      : files;
+
+    const paths: string[] = [];
+    const unresolved: string[] = [];
+    for (const file of accepted) {
+      const path = pathForDroppedFile(file);
+      if (path) paths.push(path);
+      else unresolved.push(file.name);
+    }
+
+    const skipped = files.length - accepted.length;
+    if (skipped > 0) {
+      setError(
+        `Skipped ${skipped} file${skipped === 1 ? "" : "s"} — this field accepts ${accept}.`,
+      );
+    } else if (unresolved.length) {
+      setError(
+        `No path for ${unresolved.join(", ")} — drop files from Finder into the app window.`,
+      );
+    } else {
+      setError(null);
+    }
+
+    commit(paths);
   }
 
   function remove(index: number) {
-    onChange(serializeFileRefs(refs.filter((_, i) => i !== index)));
+    onChange(
+      serializeFileRefs(refs.filter((_, position) => position !== index)),
+    );
+    setError(null);
   }
 
   function handleDrop(event: DragEvent<HTMLDivElement>) {
     event.preventDefault();
+    dragDepth.current = 0;
     setDragging(false);
-    add(event.dataTransfer.files);
+    addDropped(Array.from(event.dataTransfer.files));
   }
 
   return (
     <div className="space-y-2">
       <div
-        onDragOver={(event) => {
+        onDragEnter={(event) => {
           event.preventDefault();
+          dragDepth.current += 1;
           setDragging(true);
         }}
-        onDragLeave={() => setDragging(false)}
+        onDragOver={(event) => {
+          // Without preventDefault the browser navigates to the dropped file.
+          event.preventDefault();
+          event.dataTransfer.dropEffect = "copy";
+        }}
+        onDragLeave={() => {
+          dragDepth.current = Math.max(0, dragDepth.current - 1);
+          if (dragDepth.current === 0) setDragging(false);
+        }}
         onDrop={handleDrop}
         className={cn(
           "rounded-lg border border-dashed px-3 py-4 text-center transition-colors",
           dragging ? "border-ring bg-accent/40" : "border-border",
-          invalid && "border-destructive",
+          !dragging && invalid && "border-destructive",
         )}
       >
         <FileUp className="mx-auto mb-1.5 size-4 text-muted-foreground" />
 
         <p className="text-xs text-muted-foreground">
-          Drop {`${noun}`} here, or
+          Drop {multiple ? `${noun}s` : `a ${noun}`} here, or
         </p>
 
         <Button
@@ -85,30 +148,34 @@ export function MediaField({
           variant="outline"
           size="sm"
           className="mt-2 gap-1.5"
-          onClick={() => inputRef.current?.click()}
+          aria-busy={picking}
+          disabled={picking}
+          onClick={() => void pick()}
         >
-          <Upload className="size-3.5" />
+          {picking ? (
+            <Loader2 className="size-3.5 animate-spin" />
+          ) : (
+            <Upload className="size-3.5" />
+          )}
           Choose {multiple ? "files" : "file"}
         </Button>
 
-        <input
-          ref={inputRef}
-          type="file"
-          accept={accept}
-          multiple={multiple}
-          className="hidden"
-          onChange={(event) => {
-            add(event.target.files);
-            event.target.value = "";
-          }}
-        />
+        <p className="mt-2 text-[11px] text-muted-foreground">
+          Absolute paths are stored — the files stay where they are.
+        </p>
       </div>
+
+      {error && (
+        <p role="alert" className="text-xs text-destructive">
+          {error}
+        </p>
+      )}
 
       {refs.length > 0 && (
         <ul className="space-y-1">
           {refs.map((ref, index) => (
             <li
-              key={`${ref}-${index}`}
+              key={ref}
               className="flex items-center gap-2 rounded-sm border bg-card px-2 py-1"
             >
               <span

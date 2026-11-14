@@ -41,10 +41,10 @@ export function ParameterValueField({
       return <DatasetField value={value} onChange={onChange} invalid={invalid} />;
     case "Images":
       return <ImagesField value={value} onChange={onChange} invalid={invalid} />;
-    //case "Videos":
-    //  return <VideosField value={value} onChange={onChange} invalid={invalid} />;
-    //case "Audios":
-    //  return <AudiosField value={value} onChange={onChange} invalid={invalid} />;
+    case "Videos":
+      return <VideosField value={value} onChange={onChange} invalid={invalid} />;
+    case "Audios":
+      return <AudiosField value={value} onChange={onChange} invalid={invalid} />;
     //case "Files":
     //  return <FilesField value={value} onChange={onChange} invalid={invalid} />;
     //case "JSON":
