@@ -16,10 +16,10 @@ export const dataTypes = [
   "Text",
   "Dataset",
   "Images",
-  "Videos",
-  "Audios",
-  "Files",
-  "JSON",
+  //"Videos",
+  //"Audios",
+  //"Files",
+  //"JSON",
 ] as const;
 
 export function getPortValue(
@@ -164,12 +164,15 @@ export async function runNode(
 
   // The backend runs the node in an execute_code kernel child; this returns its
   // {node_id, status, output} envelope or throws with the child's message.
+  // `parameters` carries the node's declared defaults, resolved once here, so
+  // build_output receives them instead of an empty dict.
   const result = await hostRest<Record<string, unknown>>("/run", {
     method: "POST",
     body: {
       node_id: node.id,
       code,
       inputs,
+      parameters: node.data,
     },
   });
 

@@ -7,10 +7,6 @@ export interface TextFieldProps {
   invalid?: boolean;
 }
 
-/**
- * One visible line that grows downward as the text wraps (the shared Textarea
- * carries `field-sizing-content`), and can also be dragged taller by hand.
- */
 export function TextField({ value, onChange, invalid }: TextFieldProps) {
   return (
     <Textarea

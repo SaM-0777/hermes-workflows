@@ -79,6 +79,32 @@ export interface PythonMethods {
   build_output?: string;
 }
 
+/** The class's own methods start at an indented `def`; module-level helpers don't. */
+const INDENTED_DEF = /^[ \t]+(?:async[ \t]+)?def[ \t]+/m;
+
+function splitAtFirstMethod(code: string): { head: string; body: string } {
+  const match = INDENTED_DEF.exec(code);
+  if (!match) return { head: code, body: "" };
+  return { head: code.slice(0, match.index), body: code.slice(match.index) };
+}
+
+/**
+ * Refresh the class metadata (name, description, io, parameters) from the form
+ * while keeping whatever the node's methods already do.
+ *
+ * Regenerating the whole file on a Config-tab edit used to replace `run` and
+ * `build_output` with the stubs whenever the method bodies had not been
+ * extracted into `PythonMethods` — editing one default silently deleted the
+ * node's logic. The body after the first indented `def` is preserved verbatim.
+ */
+export function syncExecutionMetadata(source: string, data: NodeData): string {
+  const generated = generatePythonCode(data);
+  const { body } = splitAtFirstMethod(source);
+  if (!body.trim()) return generated;
+
+  return splitAtFirstMethod(generated).head + body;
+}
+
 export function generatePythonCode(
   nodeData: NodeData,
   methods: PythonMethods = {},

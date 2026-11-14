@@ -42,6 +42,8 @@ class RunRequest(BaseModel):
     node_id: str
     code: str = Field(min_length=1)
     inputs: dict[str, Any] = Field(default_factory=dict)
+    # Declared defaults, already resolved by the renderer (see lib/parameter-values.ts).
+    parameters: dict[str, Any] = Field(default_factory=dict)
 
 
 class SourceRequest(BaseModel):
@@ -471,7 +473,7 @@ async def run(body: RunRequest):
     try:
         # execute_code is blocking (it drives a child process over a socket).
         result = await asyncio.to_thread(
-            _run_node, body.code, body.inputs, {}, {}
+            _run_node, body.code, body.inputs, body.parameters, {}
         )
         return {"node_id": body.node_id, **result}
     except NodeTimeout as exc:

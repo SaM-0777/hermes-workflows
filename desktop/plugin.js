@@ -57822,6 +57822,72 @@ function bigint3(params) {
 function date5(params) {
   return _coercedDate(ZodDate, params);
 }
+// lib/parameter-values.ts
+var LEGACY_TYPES = {
+  String: "Text",
+  Number: "JSON",
+  Boolean: "JSON",
+  Object: "JSON",
+  Array: "JSON",
+  Any: "JSON",
+  Image: "Images",
+  Audio: "Audios",
+  Video: "Videos",
+  File: "Files"
+};
+function normalizeParameterType(type) {
+  return LEGACY_TYPES[type] ?? type;
+}
+function parseFileRefs(value2) {
+  try {
+    const parsed = JSON.parse(value2);
+    if (Array.isArray(parsed)) {
+      return parsed.filter((item) => typeof item === "string" && item.trim() !== "");
+    }
+  } catch {}
+  const single = value2.trim();
+  return single ? [single] : [];
+}
+function parseParameterValue(type, raw) {
+  if (!raw.trim())
+    return;
+  switch (normalizeParameterType(type)) {
+    case "Text":
+      return raw;
+    case "Dataset":
+      return raw.trim();
+    case "JSON": {
+      try {
+        return JSON.parse(raw);
+      } catch {
+        return;
+      }
+    }
+    case "Images":
+    case "Videos":
+    case "Audios":
+    case "Files": {
+      const refs = parseFileRefs(raw);
+      return refs.length ? refs : undefined;
+    }
+    default:
+      return;
+  }
+}
+function resolveNodeParameters(data) {
+  const parameters = data?.config?.parameters ?? [];
+  const resolved = {};
+  for (const parameter of parameters) {
+    const name = parameter.name?.trim();
+    if (!name)
+      continue;
+    const value2 = parseParameterValue(parameter.type, parameter.defaultValue ?? "");
+    if (value2 !== undefined)
+      resolved[name] = value2;
+  }
+  return resolved;
+}
+
 // lib/node.ts
 var categories = [
   { value: "data", label: "Data" },
@@ -57912,7 +57978,8 @@ async function runNode(node2, inputs = {}) {
     body: {
       node_id: node2.id,
       code,
-      inputs
+      inputs,
+      parameters: resolveNodeParameters(node2.data)
     }
   });
   if (!isRecord(result) || typeof result.node_id !== "string" || result.status !== "completed" || !("output" in result)) {
@@ -58265,7 +58332,7 @@ function IoTab({ values, onChange, onSubmit }) {
 import { useRef as useRef71, useState as useState40 } from "react";
 
 // components/node-fields/file-refs.ts
-function parseFileRefs(value2) {
+function parseFileRefs2(value2) {
   if (!value2.trim())
     return [];
   try {
@@ -58305,7 +58372,7 @@ function MediaField({
 }) {
   const inputRef = useRef71(null);
   const [dragging, setDragging] = useState40(false);
-  const refs = parseFileRefs(value2);
+  const refs = parseFileRefs2(value2);
   function add(files) {
     if (!files?.length)
       return;
@@ -59224,6 +59291,20 @@ function getDefaultValue(type, value2) {
       return "None";
   }
 }
+var INDENTED_DEF = /^[ \t]+(?:async[ \t]+)?def[ \t]+/m;
+function splitAtFirstMethod(code) {
+  const match = INDENTED_DEF.exec(code);
+  if (!match)
+    return { head: code, body: "" };
+  return { head: code.slice(0, match.index), body: code.slice(match.index) };
+}
+function syncExecutionMetadata(source, data) {
+  const generated = generatePythonCode(data);
+  const { body } = splitAtFirstMethod(source);
+  if (!body.trim())
+    return generated;
+  return splitAtFirstMethod(generated).head + body;
+}
 function generatePythonCode(nodeData, methods = {}) {
   const { general, io, config: config2 } = nodeData;
   const imports = "from typing import Any";
@@ -59294,7 +59375,6 @@ function NodeEditor({
       parameters: []
     }
   };
-  const [pythonMethods, setPythonMethods] = useState42({});
   const [definitionVersion, setDefinitionVersion] = useState42(0);
   const [definition, setDefinition] = useState42(initialDefinition);
   const [pythonCode, setPythonCode] = useState42(() => data?.execution?.pythonCode || generatePythonCode(initialDefinition));
@@ -59308,7 +59388,7 @@ function NodeEditor({
   }
   function updateDefinition(nextDefinition) {
     setDefinition(nextDefinition);
-    setPythonCode(generatePythonCode(nextDefinition, pythonMethods));
+    setPythonCode(syncExecutionMetadata(pythonCode, nextDefinition));
   }
   function handleDefinitionExtracted(nextDefinition) {
     setDefinition(nextDefinition);
@@ -59371,7 +59451,7 @@ function NodeEditor({
                 value: pythonCode,
                 onChange: setPythonCode,
                 onDefinitionExtracted: handleDefinitionExtracted,
-                onMethodsExtracted: setPythonMethods
+                onMethodsExtracted: () => {}
               })
             })
           ]
@@ -61140,7 +61220,7 @@ function summarizeDefault(type, value2) {
   if (!value2.trim())
     return "Not set";
   if (type === "Images" || type === "Videos" || type === "Audios" || type === "Files") {
-    const refs = parseFileRefs(value2);
+    const refs = parseFileRefs2(value2);
     if (!refs.length)
       return "Not set";
     return refs.length === 1 ? fileNameOf(refs[0]) : `${refs.length} files`;

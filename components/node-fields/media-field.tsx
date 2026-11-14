@@ -2,12 +2,6 @@ import { useRef, useState, type DragEvent } from "react";
 import { FileUp, Upload, X } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { Button } from "../ui/button";
-import {
-  fileRefFor,
-  fileNameOf,
-  parseFileRefs,
-  serializeFileRefs,
-} from "./file-refs";
 
 export interface MediaFieldProps {
   value: string;
@@ -20,8 +14,9 @@ export interface MediaFieldProps {
   invalid?: boolean;
 }
 
-function article(word: string): string {
-  return /^[aeiou]/i.test(word) ? "an" : "a";
+function parseFileRefs(value) {
+  const ref = useRef(null)
+  return ref
 }
 
 /**
@@ -33,7 +28,7 @@ export function MediaField({
   value,
   onChange,
   accept,
-  multiple = false,
+  multiple = true,
   noun,
   invalid,
 }: MediaFieldProps) {
@@ -45,7 +40,13 @@ export function MediaField({
     if (!files?.length) return;
     const picked = Array.from(files).map(fileRefFor);
     // Single-value fields replace; multi-value fields append without duplicates.
-    onChange(serializeFileRefs(multiple ? [...new Set([...refs, ...picked])] : [picked[picked.length - 1]]));
+    onChange(
+      serializeFileRefs(
+        multiple
+          ? [...new Set([...refs, ...picked])]
+          : [picked[picked.length - 1]],
+      ),
+    );
   }
 
   function remove(index: number) {
@@ -76,7 +77,7 @@ export function MediaField({
         <FileUp className="mx-auto mb-1.5 size-4 text-muted-foreground" />
 
         <p className="text-xs text-muted-foreground">
-          Drop {multiple ? `${noun}s` : `${article(noun)} ${noun}`} here, or
+          Drop {`${noun}`} here, or
         </p>
 
         <Button
@@ -110,7 +111,10 @@ export function MediaField({
               key={`${ref}-${index}`}
               className="flex items-center gap-2 rounded-sm border bg-card px-2 py-1"
             >
-              <span className="min-w-0 flex-1 truncate font-mono text-[11px]" title={ref}>
+              <span
+                className="min-w-0 flex-1 truncate font-mono text-[11px]"
+                title={ref}
+              >
                 {fileNameOf(ref)}
               </span>
 

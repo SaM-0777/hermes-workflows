@@ -136,6 +136,7 @@ export default function FlowCanvas({ runNonce = 0 }: { runNonce?: number }) {
     const id = getWorkflowId();
     if (!id) return;
 
+    // eslint-disable-next-line react-hooks/set-state-in-effect
     setWorkflowId(id);
     let active = true;
 

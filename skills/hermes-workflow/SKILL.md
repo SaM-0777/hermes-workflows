@@ -135,7 +135,7 @@ Apply these execution rules:
 5. Use imports available in the Hermes runtime. Runtime code is self-contained within the submitted source and its available environment.
 6. Dependency installation requires explicit user permission and a demonstrated need. Use the existing Hermes runtime first.
 7. Keep class metadata as literal values that the editor can extract through Python AST parsing.
-8. The current dashboard execution endpoint calls build_output with inputs, an empty parameters dictionary, and an empty context dictionary. Write logic that handles those runtime values and uses declared defaults where appropriate.
+8. The dashboard execution endpoint calls build_output with inputs, the node's declared parameter defaults resolved to typed values (parameters), and an empty context dictionary. Read with parameters.get(name, <fallback>) so a parameter without a default still works; a parameter left blank in the editor is omitted entirely.
 
 #### Bidirectional IO and configuration mapping
 

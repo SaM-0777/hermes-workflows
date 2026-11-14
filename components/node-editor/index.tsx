@@ -5,7 +5,7 @@ import { IoTab } from "./io";
 import { ConfigTab } from "./config";
 import { ExecutionTab } from "./execution";
 import { useState } from "react";
-import { generatePythonCode, type PythonMethods } from "@/lib/python-code";
+import { generatePythonCode, syncExecutionMetadata } from "@/lib/python-code";
 import type { NodeData } from "@/lib/node";
 import { Button } from "../ui/button";
 import { X } from "lucide-react";
@@ -46,7 +46,6 @@ export function NodeEditor({
       parameters: [],
     },
   };
-  const [pythonMethods, setPythonMethods] = useState<PythonMethods>({});
   const [definitionVersion, setDefinitionVersion] = useState(0);
   const [definition, setDefinition] = useState<NodeData>(initialDefinition);
   const [pythonCode, setPythonCode] = useState(
@@ -54,6 +53,7 @@ export function NodeEditor({
   );
 
   function handleSave() {
+    console.log("handle save ", { definition });
     onSave?.({
       ...definition,
       execution: {
@@ -64,7 +64,9 @@ export function NodeEditor({
 
   function updateDefinition(nextDefinition: NodeData) {
     setDefinition(nextDefinition);
-    setPythonCode(generatePythonCode(nextDefinition, pythonMethods));
+    // Metadata only: the class's method bodies are carried over untouched, so a
+    // Config-tab edit can never wipe a node's logic.
+    setPythonCode(syncExecutionMetadata(pythonCode, nextDefinition));
   }
 
   function handleDefinitionExtracted(nextDefinition: NodeData) {
@@ -142,7 +144,9 @@ export function NodeEditor({
               value={pythonCode}
               onChange={setPythonCode}
               onDefinitionExtracted={handleDefinitionExtracted}
-              onMethodsExtracted={setPythonMethods}
+              onMethodsExtracted={() => {
+                // Method bodies stay in `pythonCode`; nothing is regenerated from them.
+              }}
             />
           </TabsContent>
         </Tabs>
@@ -159,7 +163,12 @@ export function NodeEditor({
               </Button>
             )}
             {onSave && (
-              <Button onClick={handleSave} className={"rounded-sm"}>
+              <Button
+                onClick={() => {
+                  handleSave();
+                }}
+                className={"rounded-sm"}
+              >
                 Save changes
               </Button>
             )}
