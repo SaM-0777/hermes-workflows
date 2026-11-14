@@ -1,19 +1,16 @@
 import { useId } from "react";
 import {
-  FileImage,
-  FileAudio,
-  FileVideo,
-  File,
   Braces,
-  List,
+  Database,
+  File,
+  FileAudio,
+  FileImage,
+  FileVideo,
   Type,
-  Hash,
-  ToggleLeft,
   Upload,
 } from "lucide-react";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
-import { Switch } from "@/components/ui/switch";
 import { cn } from "@/lib/utils";
 import type { dataTypes } from "@/lib/node";
 import { Label } from "../ui/label";
@@ -28,16 +25,13 @@ interface PortValueFieldProps {
 }
 
 const typeIcons = {
-  Any: Braces,
-  String: Type,
-  Number: Hash,
-  Boolean: ToggleLeft,
-  Object: Braces,
-  Array: List,
-  Image: FileImage,
-  Audio: FileAudio,
-  Video: FileVideo,
-  File,
+  Text: Type,
+  Dataset: Database,
+  Images: FileImage,
+  Videos: FileVideo,
+  Audios: FileAudio,
+  Files: File,
+  JSON: Braces,
 };
 
 const fieldClass = cn(
@@ -55,12 +49,13 @@ function FileField({ type, value, onChange }: PortValueFieldProps) {
   const id = useId();
   const Icon = typeIcons[type];
   const accept: Partial<Record<PortValueType, string>> = {
-    Image: "image/*",
-    Audio: "audio/*",
-    Video: "video/*",
+    Images: "image/*",
+    Audios: "audio/*",
+    Videos: "video/*",
   };
   const acceptedTypes = accept[type];
   const file = isFile(value) ? value : null;
+  const noun = type.slice(0, -1).toLowerCase();
 
   return (
     <Label
@@ -78,7 +73,7 @@ function FileField({ type, value, onChange }: PortValueFieldProps) {
 
       <div className="min-w-0 flex-1">
         <p className="truncate text-xs font-medium">
-          {file?.name ?? `Choose ${type.toLowerCase()}`}
+          {file?.name ?? `Choose ${noun}`}
         </p>
         <p className="text-[10px] text-muted-foreground">
           {file
@@ -107,7 +102,7 @@ export function PortValueField({
   disabled,
 }: PortValueFieldProps) {
   switch (type) {
-    case "String":
+    case "Text":
       return (
         <Input
           className={fieldClass}
@@ -118,46 +113,22 @@ export function PortValueField({
         />
       );
 
-    case "Number":
+    case "Dataset":
       return (
         <Input
-          type="number"
-          className={fieldClass}
-          placeholder="0"
-          value={value == null ? "" : String(value)}
+          className={cn(fieldClass, "font-mono")}
+          placeholder="/data/mnist or https://example.com/dataset.csv"
+          value={String(value ?? "")}
           disabled={disabled}
-          onChange={(event) =>
-            onChange?.(
-              event.target.value === ""
-                ? undefined
-                : Number(event.target.value),
-            )
-          }
+          onChange={(event) => onChange?.(event.target.value)}
         />
       );
 
-    case "Boolean":
-      return (
-        <div className="flex h-9 items-center justify-between rounded-lg border border-border/70 bg-background/60 px-3">
-          <span className="text-xs text-muted-foreground">
-            {value ? "Enabled" : "Disabled"}
-          </span>
-          <Switch
-            checked={Boolean(value)}
-            disabled={disabled}
-            onCheckedChange={onChange}
-          />
-        </div>
-      );
-
-    case "Object":
-    case "Array":
+    case "JSON":
       return (
         <Textarea
           className="min-h-20 resize-y rounded-lg border-border/70 bg-background/60 font-mono text-xs shadow-none"
-          placeholder={
-            type === "Object" ? '{\n  "key": "value"\n}' : "[\n  \n]"
-          }
+          placeholder={'{\n  "key": "value"\n}'}
           value={
             typeof value === "string"
               ? value
@@ -170,10 +141,10 @@ export function PortValueField({
         />
       );
 
-    case "Image":
-    case "Audio":
-    case "Video":
-    case "File":
+    case "Images":
+    case "Videos":
+    case "Audios":
+    case "Files":
       return (
         <FileField
           type={type}
@@ -183,7 +154,6 @@ export function PortValueField({
         />
       );
 
-    case "Any":
     default:
       return (
         <Textarea

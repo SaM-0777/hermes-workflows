@@ -1,16 +1,13 @@
 import type { NodeData } from "./node";
 
 export const pythonTypes: Record<string, string> = {
-  Any: "Any",
-  String: "str",
-  Number: "float",
-  Boolean: "bool",
-  Object: "dict",
-  Array: "list",
-  Image: "Image",
-  Audio: "Audio",
-  Video: "Video",
-  File: "File",
+  Text: "str",
+  Dataset: "str",
+  JSON: "dict",
+  Images: "list",
+  Videos: "list",
+  Audios: "list",
+  Files: "list",
 };
 
 function toPythonString(value: string): string {
@@ -38,29 +35,39 @@ function toPythonValue(value: unknown): string {
   return "None";
 }
 
+/** File-valued parameters store a JSON array of path references. */
+function fileRefsOf(value: string): string[] {
+  try {
+    const parsed: unknown = JSON.parse(value);
+    if (Array.isArray(parsed)) {
+      return parsed.filter((item): item is string => typeof item === "string");
+    }
+  } catch {
+    // A hand-typed single path is still a usable reference.
+  }
+  return value.trim() ? [value.trim()] : [];
+}
+
 function getDefaultValue(type: string, value: string): string {
   if (!value.trim()) return "None";
 
   switch (type) {
-    case "String":
+    case "Text":
+    case "Dataset":
       return toPythonString(value);
 
-    case "Number": {
-      const number = Number(value);
-      return Number.isFinite(number) ? String(number) : "None";
-    }
-
-    case "Boolean":
-      return value === "true" ? "True" : value === "false" ? "False" : "None";
-
-    case "Object":
-    case "Array":
-    case "Any":
+    case "JSON":
       try {
         return toPythonValue(JSON.parse(value));
       } catch {
         return "None";
       }
+
+    case "Images":
+    case "Videos":
+    case "Audios":
+    case "Files":
+      return toPythonValue(fileRefsOf(value));
 
     default:
       return "None";

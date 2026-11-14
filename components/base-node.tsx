@@ -15,6 +15,31 @@ import { Separator } from "@/components/ui/separator";
 import { getPortValue, type NodeData, type NodeStatus } from "@/lib/node";
 import { NodeEditor } from "./node-editor";
 import { NodeValue } from "./node-value";
+import { fileNameOf, parseFileRefs } from "./node-fields";
+
+/**
+ * One-line summary of a parameter's default for the node card: a file list shows
+ * its names, JSON collapses to one line, everything else is the raw text.
+ */
+function summarizeDefault(type: string, value: string): string {
+  if (!value.trim()) return "Not set";
+
+  if (type === "Images" || type === "Videos" || type === "Audios" || type === "Files") {
+    const refs = parseFileRefs(value);
+    if (!refs.length) return "Not set";
+    return refs.length === 1 ? fileNameOf(refs[0]) : `${refs.length} files`;
+  }
+
+  if (type === "JSON") {
+    try {
+      return JSON.stringify(JSON.parse(value));
+    } catch {
+      return value;
+    }
+  }
+
+  return value;
+}
 
 export interface BaseNodeProps {
   id: string;
@@ -279,7 +304,7 @@ export function BaseNode({
                             {parameter.name}
                           </p>
                           <p className="mt-0.5 truncate text-[11px] text-muted-foreground">
-                            Default: {parameter.defaultValue || "Not set"}
+                            Default: {summarizeDefault(parameter.type, parameter.defaultValue)}
                           </p>
                         </div>
 

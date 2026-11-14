@@ -13,16 +13,13 @@ export const categories = [
 ] as const;
 
 export const dataTypes = [
-  "Any",
-  "String",
-  "Number",
-  "Boolean",
-  "Object",
-  "Array",
-  "Image",
-  "Audio",
-  "Video",
-  "File",
+  "Text",
+  "Dataset",
+  "Images",
+  "Videos",
+  "Audios",
+  "Files",
+  "JSON",
 ] as const;
 
 export function getPortValue(

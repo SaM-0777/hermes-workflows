@@ -86,11 +86,8 @@ export default function FlowCanvas({ runNonce = 0 }: { runNonce?: number }) {
 
       if (!output || !input) return false;
 
-      return (
-        output.type === "Any" ||
-        input.type === "Any" ||
-        output.type === input.type
-      );
+      // Types must match exactly; the old `Any` wildcard no longer exists.
+      return output.type === input.type;
     },
     [getNode],
   );

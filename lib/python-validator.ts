@@ -47,18 +47,21 @@ export async function validatePython(
   }
 }
 
+// Python annotation -> studio type. `str` covers both Text and Dataset (a dataset
+// is a path or URL), `list` covers the file collections, `dict` is JSON. Legacy
+// numeric/bool annotations from older nodes land on JSON, which accepts scalars.
 const pythonToUiType: Record<string, (typeof dataTypes)[number]> = {
-  Any: "Any",
-  str: "String",
-  float: "Number",
-  int: "Number",
-  bool: "Boolean",
-  dict: "Object",
-  list: "Array",
-  Image: "Image",
-  Audio: "Audio",
-  Video: "Video",
-  File: "File",
+  str: "Text",
+  dict: "JSON",
+  list: "Files",
+  Any: "JSON",
+  float: "JSON",
+  int: "JSON",
+  bool: "JSON",
+  Image: "Images",
+  Audio: "Audios",
+  Video: "Videos",
+  File: "Files",
 };
 
 function toFormDefaultValue(value: unknown): string {
