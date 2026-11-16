@@ -316,21 +316,19 @@ export default function FlowCanvas({ runNonce = 0 }: { runNonce?: number }) {
               </Button>
             )}
             <Button
-              variant="outline"
               size="sm"
               disabled={isSaving}
               onClick={handleSave}
-              className="gap-2 bg-background shadow-sm"
+              className="gap-2 "
             >
               <Save className="size-3.5" />
             </Button>
             <Button
-              variant="outline"
               size="sm"
               onClick={handleDelete}
-              className="gap-2 bg-background text-destructive shadow-sm hover:text-destructive"
+              className="gap-2 "
             >
-              <Trash2 className="size-3.5" />
+              <Trash2 className="size-3.5 stroke-destructive" />
             </Button>
           </Panel>
         </ReactFlow>

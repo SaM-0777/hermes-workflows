@@ -4,6 +4,7 @@ import { cn } from "cn"
 
 import { Button } from "@/components/ui/button"
 import { XIcon } from "lucide-react"
+import { useStudioPortalContainer } from "@/lib/studio-portal"
 
 function Dialog({ ...props }: DialogPrimitive.Root.Props) {
   return <DialogPrimitive.Root data-slot="dialog" {...props} />
@@ -14,7 +15,10 @@ function DialogTrigger({ ...props }: DialogPrimitive.Trigger.Props) {
 }
 
 function DialogPortal({ ...props }: DialogPrimitive.Portal.Props) {
-  return <DialogPrimitive.Portal data-slot="dialog-portal" {...props} />
+  const container = useStudioPortalContainer()
+  return (
+    <DialogPrimitive.Portal container={container} data-slot="dialog-portal" {...props} />
+  )
 }
 
 function DialogClose({ ...props }: DialogPrimitive.Close.Props) {

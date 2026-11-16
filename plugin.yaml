@@ -1,6 +1,6 @@
 name: hermes-workflow
 label: Hermes Workflow
-version: 0.0.1
+version: 0.1.0
 author: SaM-0777
 homepage: https://github.com/SaM-0777/hermes-workflows/tree/main
 description: Visual workflow studio for designing, running, and iterating on multi-step agent and automation flows inside Hermes Desktop.

@@ -4,7 +4,7 @@ description: Build and execute general-purpose, agent-driven workflows to automa
 version: 0.0.1
 author: SaM-0777
 license: MIT
-platforms: [macos]
+platforms: [linux, macos, windows]
 metadata:
   hermes:
     tags: [workflow, nodes, python, automation]
