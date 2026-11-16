@@ -9,7 +9,7 @@
     "build:plugin": "bun scripts/build-plugin.ts",
     "lint": "eslint .",
     "preview": "vite preview",
-    "release": "bun run build && bun run build:plugin"
+    "release": "bun run build && bun run build:plugin && cp ~/.hermes/plugins/hermes-workflow/desktop/plugin.js ~/.hermes/desktop-plugins/hermes-workflow/plugin.js"
   },
   "dependencies": {
     "@base-ui/react": "^1.9.0",
@@ -40,6 +40,8 @@
     "eslint-plugin-react-hooks": "^7.1.1",
     "eslint-plugin-react-refresh": "^0.5.7",
     "globals": "^17.13.0",
+    "postcss": "^8.5.32",
+    "postcss-selector-parser": "^7.1.7",
     "typescript": "~6.0.3",
     "typescript-eslint": "^8.72.1",
     "vite": "^8.3.6"

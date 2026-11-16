@@ -1,5 +1,6 @@
 import { mkdir, readFile, readdir, writeFile } from "node:fs/promises";
 import path from "node:path";
+import { assertScoped, scopeStudioCss } from "./scope-css";
 
 /**
  * Bundles the desktop half: ONE artifact, desktop/plugin.js.
@@ -47,7 +48,11 @@ async function readStudioCss(): Promise<string> {
 async function main() {
   await mkdir(outputDir, { recursive: true });
 
-  const css = await readStudioCss();
+  // Scope the compiled sheet to the studio's element before inlining it: the
+  // artifact lands in the app's document, where an unscoped utility collides
+  // with the app's own class of the same name.
+  const css = scopeStudioCss(await readStudioCss());
+  assertScoped(css);
 
   const result = await Bun.build({
     entrypoints: [path.join(root, "desktop/plugin.ts")],

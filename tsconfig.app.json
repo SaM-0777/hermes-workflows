@@ -26,5 +26,5 @@
       "@/*": ["./*"]
     }
   },
-  "include": ["src", "components", "providers", "lib", "hooks"]
+  "include": ["src", "components", "providers", "lib", "hooks", "lib/hermes-plugin-sdk.d.ts"]
 }

@@ -14,7 +14,7 @@ export default function App({ runNonce = 0 }: { runNonce?: number }) {
   return (
     <TooltipProvider>
       <ReactFlowProvider>
-        <main className="workflow-studio-app relative h-full w-full bg-background text-foreground">
+        <main className="relative h-full w-full bg-background text-foreground">
           <FlowCanvas runNonce={runNonce} />
         </main>
         <Toaster position="top-center" richColors closeButton />
