@@ -33,13 +33,21 @@ export default {
         id: "workflows-page",
         area: ROUTES_AREA,
         data: { path: "/workflows" },
-        render: () => jsx(WorkflowLibraryPage, { ctx }),
+        render: () =>
+          jsx("div", {
+            className: "hermes-workflow-studio",
+            children: jsx(WorkflowLibraryPage, { ctx }),
+          }),
       },
       {
         id: "workflow-studio-page",
         area: ROUTES_AREA,
         data: { path: "/workflow-studio" },
-        render: () => jsx(WorkflowStudioPage, { ctx }),
+        render: () =>
+          jsx("div", {
+            className: "hermes-workflow-studio",
+            children: jsx(WorkflowStudioPage, { ctx }),
+          }),
       },
       {
         id: "workflows-sidebar",
