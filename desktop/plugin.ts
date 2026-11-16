@@ -1,7 +1,7 @@
 import { ROUTES_AREA, SIDEBAR_NAV_AREA } from "@hermes/plugin-sdk";
 import { jsx } from "react/jsx-runtime";
 import { setHostRest } from "../lib/host";
-import { installStudioStyles } from "./studio-styles";
+import { StudioScope } from "../lib/studio-scope";
 import { WorkflowLibraryPage } from "./workflows/ui/workflow-library";
 import { WorkflowStudioPage } from "./workflows/ui/workflow-studio";
 
@@ -26,7 +26,6 @@ export default {
     // backend through this ctx instead of a frame message channel.
     setHostRest(ctx.rest);
     ctx.onDispose(() => setHostRest(null));
-    ctx.onDispose(installStudioStyles());
 
     ctx.registerMany([
       {
@@ -34,20 +33,14 @@ export default {
         area: ROUTES_AREA,
         data: { path: "/workflows" },
         render: () =>
-          jsx("div", {
-            className: "hermes-workflow-studio",
-            children: jsx(WorkflowLibraryPage, { ctx }),
-          }),
+          jsx(StudioScope, { children: jsx(WorkflowLibraryPage, { ctx }) }),
       },
       {
         id: "workflow-studio-page",
         area: ROUTES_AREA,
         data: { path: "/workflow-studio" },
         render: () =>
-          jsx("div", {
-            className: "hermes-workflow-studio",
-            children: jsx(WorkflowStudioPage, { ctx }),
-          }),
+          jsx(StudioScope, { children: jsx(WorkflowStudioPage, { ctx }) }),
       },
       {
         id: "workflows-sidebar",
