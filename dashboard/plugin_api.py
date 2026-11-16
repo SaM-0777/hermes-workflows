@@ -1,10 +1,16 @@
 """Workflow Studio backend: workflow/node-library storage plus node execution.
 
-Node Python runs through Hermes' own ``execute_code`` (tools/code_execution_tool),
-never through ``exec`` in this process. That gives each run a separate kernel
-child process with the scrubbed environment Hermes maintains (PATH, HOME, LANG/
-LC_*, TMPDIR, SHELL, the project interpreter — credentials and unrelated config
-are dropped), the kernel's own timeout, and its usual approval guard.
+Node Python runs inside the long-lived ``hermes-workflow`` container (see the
+Dockerfile and docker-compose.yml at the plugin root), so node code gets that
+container's Python 3.12 + uv install and never touches this process. Hermes'
+own terminal backend is unaffected: the agent keeps its local interpreter and
+full host filesystem access.
+
+``HERMES_WORKFLOW_RUNNER=local`` restores the previous behaviour, where a node
+runs through Hermes' own ``execute_code`` (tools/code_execution_tool) in a
+separate kernel child process rather than ``exec`` in this process.
+
+``GET /runner`` reports what the docker path resolves to right now.
 """
 from __future__ import annotations
 
@@ -16,8 +22,11 @@ import logging
 import os
 from pathlib import Path
 import re
+import shlex
 import shutil
+import subprocess
 import tempfile
+import time
 from typing import Any
 import uuid
 
@@ -425,7 +434,329 @@ def _execute_code_tool():
     return registry
 
 
+# --- Container runner -----------------------------------------------------
+#
+# Nodes execute inside the long-lived ``hermes-workflow`` container that the
+# plugin's docker-compose.yml defines. This file only drives it: check the
+# daemon, start a stopped container, ship the script, run it with the
+# container's own interpreter. Nothing here builds or recreates anything.
+
+DEFAULT_CONTAINER = "hermes-workflow"
+DEFAULT_CONTAINER_PYTHON = "python3"
+DEFAULT_CONTAINER_WORKDIR = "/work"
+DEFAULT_NODE_TIMEOUT = 300
+
+# How long a stopped container gets to reach "running" after `docker start`.
+_START_WAIT_SECONDS = 15
+
+_DAEMON_DOWN_HINTS = (
+    "cannot connect to the docker daemon",
+    "error during connect",
+    "is the docker daemon running",
+    "dial unix",
+    "failed to connect to the docker api",
+    "docker.sock",
+)
+
+_PYTHON_CACHE: dict[str, str] = {}
+_DOCKER_BIN_CACHE: dict[str, str] = {}
+
+# Desktop apps (and anything else launched from Finder/Electron) inherit the GUI
+# PATH — /usr/bin:/bin:/usr/sbin:/sbin — where a Docker Desktop CLI installed
+# under ~/.docker/bin or the app bundle never appears. Look there directly.
+_DOCKER_BIN_CANDIDATES = (
+    "~/.docker/bin/docker",
+    "/Applications/Docker.app/Contents/Resources/bin/docker",
+    "/usr/local/bin/docker",
+    "/opt/homebrew/bin/docker",
+    "/usr/bin/docker",
+)
+
+
+def _runner_name() -> str:
+    """Where node Python runs: ``docker`` (default) or ``local``."""
+    value = (os.environ.get("HERMES_WORKFLOW_RUNNER") or "").strip().lower()
+    if not value:
+        return "docker"
+    if value in ("docker", "local"):
+        return value
+    logger.warning(
+        "Ignoring HERMES_WORKFLOW_RUNNER=%r (expected 'docker' or 'local')", value
+    )
+    return "docker"
+
+
+def _setting(env_key: str, default: str) -> str:
+    value = (os.environ.get(env_key) or "").strip()
+    return value or default
+
+
+def _container_name() -> str:
+    return _setting("HERMES_WORKFLOW_CONTAINER", DEFAULT_CONTAINER)
+
+
+def _container_python() -> str:
+    return _setting("HERMES_WORKFLOW_PYTHON", DEFAULT_CONTAINER_PYTHON)
+
+
+def _container_workdir() -> str:
+    return _setting("HERMES_WORKFLOW_WORKDIR", DEFAULT_CONTAINER_WORKDIR).rstrip("/") or "/"
+
+
+def _node_timeout() -> int:
+    raw = _setting("HERMES_WORKFLOW_NODE_TIMEOUT", str(DEFAULT_NODE_TIMEOUT))
+    try:
+        return max(int(raw), 1)
+    except ValueError:
+        logger.warning("Ignoring HERMES_WORKFLOW_NODE_TIMEOUT=%r (not an int)", raw)
+        return DEFAULT_NODE_TIMEOUT
+
+
+def _docker_binary() -> str:
+    """Absolute path to a working docker CLI, or "" when none is found.
+
+    GUI-launched processes have a minimal PATH, so the configured value and PATH
+    are tried first, then the usual Docker Desktop install locations.
+    """
+    cached = _DOCKER_BIN_CACHE.get("path")
+    if cached:
+        return cached
+
+    configured = (os.environ.get("HERMES_WORKFLOW_DOCKER_BIN") or "").strip()
+    if configured:
+        resolved = shutil.which(configured) or (
+            configured if os.path.isfile(configured) and os.access(configured, os.X_OK) else ""
+        )
+        if resolved:
+            _DOCKER_BIN_CACHE["path"] = resolved
+            return resolved
+
+    found = shutil.which("docker")
+    if not found:
+        for candidate in _DOCKER_BIN_CANDIDATES:
+            path = os.path.expanduser(candidate)
+            if os.path.isfile(path) and os.access(path, os.X_OK):
+                found = path
+                break
+
+    _DOCKER_BIN_CACHE["path"] = found or ""
+    return _DOCKER_BIN_CACHE["path"]
+
+
+def _compose_command() -> str:
+    binary = _docker_binary() or "docker"
+    return f"{binary} compose -f {Path(__file__).resolve().parents[1] / 'docker-compose.yml'} up -d"
+
+
+def _docker(
+    args: list[str],
+    *,
+    input_text: str | None = None,
+    timeout: int = 60,
+) -> subprocess.CompletedProcess:
+    """Run one docker CLI command. Transport failures become node errors."""
+    binary = _docker_binary()
+    if not binary:
+        searched = ", ".join(
+            [os.environ.get("HERMES_WORKFLOW_DOCKER_BIN", ""), "PATH", *_DOCKER_BIN_CANDIDATES]
+        )
+        raise NodeExecutionError(
+            "Docker CLI not found. Searched: "
+            f"{searched}. Install Docker Desktop, or set "
+            "HERMES_WORKFLOW_DOCKER_BIN to the docker binary's full path."
+        )
+    try:
+        proc = subprocess.run(
+            [binary, *args],
+            input=input_text,
+            capture_output=True,
+            text=True,
+            timeout=timeout,
+        )
+    except FileNotFoundError as exc:
+        raise NodeExecutionError(
+            f"Docker CLI not found ({binary}). Install Docker, or point "
+            "HERMES_WORKFLOW_DOCKER_BIN at it."
+        ) from exc
+    except subprocess.TimeoutExpired as exc:
+        raise NodeTimeout(f"`docker {args[0]}` did not return within {timeout}s.") from exc
+
+    stderr = (proc.stderr or "").strip()
+    if proc.returncode != 0 and any(
+        hint in stderr.lower() for hint in _DAEMON_DOWN_HINTS
+    ):
+        first_line = stderr.splitlines()[0] if stderr else "no detail"
+        raise NodeExecutionError(
+            "Workflow nodes run inside Docker, but the Docker daemon is not "
+            f"reachable ({first_line}). Start Docker Desktop, then retry."
+        )
+    return proc
+
+
+def _docker_output(args: list[str], *, timeout: int = 60) -> str:
+    proc = _docker(args, timeout=timeout)
+    if proc.returncode != 0:
+        raise NodeExecutionError((proc.stderr or "").strip() or f"docker {args[0]} failed.")
+    return proc.stdout or ""
+
+
+def _container_state(container: str) -> str:
+    """``running`` / ``exited`` / ``created`` / "" when the container is absent."""
+    out = _docker_output(
+        ["ps", "-a", "--filter", f"name=^{container}$", "--format", "{{.State}}"]
+    )
+    states = [line.strip() for line in out.splitlines() if line.strip()]
+    return states[0] if states else ""
+
+
+def _ensure_container() -> str:
+    """The container to run in, started if it exists but is stopped."""
+    container = _container_name()
+
+    info = _docker(["info", "--format", "{{.ServerVersion}}"], timeout=30)
+    if info.returncode != 0:
+        raise NodeExecutionError(
+            "Docker is not running. Workflow nodes execute inside the "
+            f"'{container}' container — start Docker Desktop, then retry."
+        )
+
+    state = _container_state(container)
+    if not state:
+        raise NodeExecutionError(
+            f"Container '{container}' does not exist. Create it with:\n"
+            f"  {_compose_command()}"
+        )
+    if state == "running":
+        return container
+
+    started = _docker(["start", container], timeout=_START_WAIT_SECONDS + 10)
+    if started.returncode != 0:
+        detail = (started.stderr or "").strip() or "docker start failed."
+        raise NodeExecutionError(f"Could not start container '{container}': {detail}")
+
+    deadline = time.monotonic() + _START_WAIT_SECONDS
+    while time.monotonic() < deadline:
+        if _container_state(container) == "running":
+            return container
+        time.sleep(0.5)
+
+    raise NodeExecutionError(
+        f"Container '{container}' did not reach 'running' within "
+        f"{_START_WAIT_SECONDS}s. Check it with: docker logs {container}"
+    )
+
+
+def _resolve_python(container: str) -> str:
+    """Interpreter inside *container*; a venv path works if one is configured."""
+    python = _container_python()
+    key = f"{container}\0{python}"
+    if key in _PYTHON_CACHE:
+        return _PYTHON_CACHE[key]
+
+    proc = _docker(
+        ["exec", container, "sh", "-c", f"command -v {shlex.quote(python)}"],
+        timeout=30,
+    )
+    found = (proc.stdout or "").strip().splitlines()
+    if proc.returncode != 0 or not found:
+        raise NodeExecutionError(
+            f"Interpreter '{python}' is not on PATH inside container "
+            f"'{container}'. Set HERMES_WORKFLOW_PYTHON to the interpreter to use."
+        )
+    _PYTHON_CACHE[key] = found[0].strip()
+    return _PYTHON_CACHE[key]
+
+
+def _has_result_marker(stdout: str) -> bool:
+    return any(line.startswith(_RESULT_MARKER) for line in stdout.splitlines())
+
+
+def _run_node_in_container(
+    code: str,
+    inputs: dict[str, Any],
+    parameters: dict[str, Any],
+    context: dict[str, Any],
+) -> dict[str, Any]:
+    """Ship the node script into the container and run it there."""
+    container = _ensure_container()
+    python = _resolve_python(container)
+    workdir = _container_workdir()
+    timeout = _node_timeout()
+
+    # result_path empty: the driver prints the marker line instead of writing a
+    # file. docker exec captures stdout whole, so execute_code's 50 KB cap (the
+    # reason the local path uses a result file) does not apply.
+    script = _node_script(code, inputs, parameters, context, "")
+    remote = f"{workdir}/node-{uuid.uuid4().hex}.py"
+
+    _docker(["exec", container, "mkdir", "-p", workdir], timeout=30)
+
+    try:
+        shipped = _docker(
+            ["exec", "-i", container, "sh", "-c", f"cat > {shlex.quote(remote)}"],
+            input_text=script,
+            timeout=60,
+        )
+        if shipped.returncode != 0:
+            raise NodeExecutionError(
+                f"Could not write the node script into container '{container}': "
+                f"{(shipped.stderr or '').strip() or 'unknown error'}"
+            )
+
+        try:
+            proc = _docker(
+                [
+                    "exec",
+                    container,
+                    "sh",
+                    "-c",
+                    f"cd {shlex.quote(workdir)} && exec {python} {shlex.quote(remote)}",
+                ],
+                timeout=timeout,
+            )
+        except NodeTimeout as exc:
+            _docker(
+                [
+                    "exec",
+                    container,
+                    "sh",
+                    "-c",
+                    f"pkill -f {shlex.quote(remote)} || true",
+                ],
+                timeout=20,
+            )
+            raise NodeTimeout(
+                f"Node exceeded {timeout}s inside container '{container}'; the "
+                "container-side process was killed."
+            ) from exc
+
+        if proc.returncode != 0 and not _has_result_marker(proc.stdout or ""):
+            detail = (proc.stderr or "").strip() or (
+                f"Node python exited with code {proc.returncode}."
+            )
+            raise NodeExecutionError(detail)
+
+        return _parse_result(json.dumps({"output": proc.stdout or ""}), "")
+    finally:
+        try:
+            _docker(["exec", container, "rm", "-f", remote], timeout=20)
+        except NodeExecutionError:
+            logger.debug("Could not remove %s from %s", remote, container)
+
+
 def _run_node(
+    code: str,
+    inputs: dict[str, Any],
+    parameters: dict[str, Any],
+    context: dict[str, Any],
+) -> dict[str, Any]:
+    """Run one node wherever the runner setting points."""
+    if _runner_name() == "docker":
+        return _run_node_in_container(code, inputs, parameters, context)
+    return _run_node_via_execute_code(code, inputs, parameters, context)
+
+
+def _run_node_via_execute_code(
     code: str,
     inputs: dict[str, Any],
     parameters: dict[str, Any],
@@ -492,6 +823,39 @@ async def run(body: RunRequest):
             status_code=500,
             detail={"type": "execution_error", "message": str(exc)},
         ) from exc
+
+
+@router.get("/runner")
+async def runner_status():
+    """What the node runner resolves to right now — diagnosis without a run."""
+    runner = _runner_name()
+    info: dict[str, Any] = {
+        "runner": runner,
+        "container": _container_name(),
+        "python": _container_python(),
+        "workdir": _container_workdir(),
+        "timeout": _node_timeout(),
+    }
+    if runner != "docker":
+        info["status"] = "local"
+        return info
+
+    def _probe() -> dict[str, Any]:
+        probe = dict(info)
+        try:
+            daemon = _docker(["info", "--format", "{{.ServerVersion}}"], timeout=30)
+            probe["docker_running"] = daemon.returncode == 0
+            probe["container_state"] = _container_state(_container_name())
+            probe["status"] = (
+                "ready" if probe["container_state"] == "running" else "not_running"
+            )
+        except NodeExecutionError as exc:
+            probe["docker_running"] = False
+            probe["status"] = "unavailable"
+            probe["error"] = str(exc)
+        return probe
+
+    return await asyncio.to_thread(_probe)
 
 
 # Workflow dir

@@ -59,24 +59,47 @@ function SelectContent({
   children,
   side = "bottom",
   sideOffset = 4,
-  align = "center",
+  align = "start",
   alignOffset = 0,
-  alignItemWithTrigger = true,
+  alignItemWithTrigger = false,
+  positionMethod = "fixed",
+  collisionAvoidance = { side: "none", align: "none", fallbackAxisSide: "none" },
+  collisionPadding = 0,
   ...props
 }: SelectPrimitive.Popup.Props &
   Pick<
     SelectPrimitive.Positioner.Props,
-    "align" | "alignOffset" | "side" | "sideOffset" | "alignItemWithTrigger"
+    | "align"
+    | "alignOffset"
+    | "side"
+    | "sideOffset"
+    | "alignItemWithTrigger"
+    | "positionMethod"
+    | "collisionAvoidance"
+    | "collisionPadding"
   >) {
   const container = useStudioPortalContainer()
   return (
     <SelectPrimitive.Portal container={container}>
+      {/*
+        Placement is pinned, not adaptive:
+        - side "bottom" + collisionAvoidance.side "none": never flips to the top.
+        - align "start" + collisionAvoidance.align "none": the popup's left edge
+          stays on the trigger's left edge; alignItemWithTrigger is off so Base UI
+          does not slide it up to line the selected item with the trigger text.
+        - positionMethod "fixed": coordinates are viewport-based, so a scrolled or
+          transformed ancestor (studio shell, editor drawer) cannot shift the popup
+          to an unrelated part of the screen.
+      */}
       <SelectPrimitive.Positioner
         side={side}
         sideOffset={sideOffset}
         align={align}
         alignOffset={alignOffset}
         alignItemWithTrigger={alignItemWithTrigger}
+        positionMethod={positionMethod}
+        collisionAvoidance={collisionAvoidance}
+        collisionPadding={collisionPadding}
         className="isolate z-50"
       >
         <SelectPrimitive.Popup

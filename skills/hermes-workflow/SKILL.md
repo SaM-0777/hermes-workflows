@@ -28,15 +28,17 @@ metadata:
       - add_workflow_edge
       - remove_workflow_edge
       - request_run_workflow
+      - check_workflow_runtime
+      - setup_workflow_runtime
 ---
 
 # Hermes Workflow Operations
 
-Use the Hermes Workflow tools to manage the reusable node library, create and edit saved workflows, define Python-backed node behavior, connect compatible ports, remove exact edges, and verify persisted results.
+Use the Hermes Workflow tools to manage the reusable node library, create and edit saved workflows, define Python-backed node behavior, connect compatible ports, remove exact edges, check the container that executes nodes, and verify persisted results.
 
 ## When to Use
 
-Load this skill for requests involving Hermes Workflow Studio nodes, saved workflows, node IO, node parameters, Python Execution classes, workflow edges, or workflow execution.
+Load this skill for requests involving Hermes Workflow Studio nodes, saved workflows, node IO, node parameters, Python Execution classes, workflow edges, workflow execution, or checking and provisioning the Docker runtime that node code executes in.
 
 ## Quick Reference
 
@@ -62,6 +64,8 @@ Use the exact registered tool names and schema field names below. Tool responses
 | Edges          | add_workflow_edge            | workflow_id, source_node_id, source_handle, target_node_id, target_handle; validates ports, exact type equality, and duplicate connections before saving. |
 | Edges          | remove_workflow_edge         | workflow_id and exact edge_id; removes the matching edge and returns the removed edge.                                                                    |
 | Execution      | request_run_workflow        | { "workflow_id": "<workflow-uuid>" }; requests user approval before Workflow execution.                                                          |
+| Runtime        | check_workflow_runtime      | {} ; returns docker (binary, running, server_version), image (name, present), container (name, state), status, ready, message, and next_action. Starts nothing. |
+| Runtime        | setup_workflow_runtime      | {} ; builds the image and/or starts the container. Approval-gated: the pre_tool_call hook blocks it when the daemon is down and otherwise asks the user to approve before any Docker command runs. |
 
 ## Procedure
 
@@ -132,8 +136,8 @@ Apply these execution rules:
 2. Keep inputs, outputs, and parameters identical to data.io and data.config using the Python representations shown below.
 3. Put the node computation in run(self, inputs, parameters, context).
 4. Make build_output(self, inputs, parameters, context) the runtime entry method. It calls run, applies any required output formatting, and returns the final value.
-5. Use imports available in the Hermes runtime. Runtime code is self-contained within the submitted source and its available environment.
-6. Dependency installation requires explicit user permission and a demonstrated need. Use the existing Hermes runtime first.
+5. Node code executes inside the plugin's long-lived `hermes-workflow` container, not in Hermes' own interpreter. It sees that container's Python 3.12 + uv install, its installed packages, and the mounted `/work` volume; host paths outside the mounts are unavailable. The standard library plus anything installed in the container is importable.
+6. Install a dependency into the node environment with `docker exec hermes-workflow uv pip install <package>`. There is no venv to activate: PATH already points at /opt/venv, and that directory is a named volume, so the package keeps working across container restarts, container recreation, and image rebuilds. Only `docker compose down -v` (deleting volumes) removes it.
 7. Keep class metadata as literal values that the editor can extract through Python AST parsing.
 8. The dashboard execution endpoint calls build_output with inputs, the node's declared parameter defaults resolved to typed values (parameters), and an empty context dictionary. Read with parameters.get(name, <fallback>) so a parameter without a default still works; a parameter left blank in the editor is omitted entirely.
 
@@ -253,7 +257,19 @@ The handler removes the exact matching edge, updates the workflow timestamp, and
 10. Observe per-node runtime states: ready, running, success, or error. Inspect node inputs, outputs, and error details in the Workflow Studio canvas.
 11. Use get_workflow_by_id to confirm the requested workflow ID and topology. Use user approval plus canvas runtime states and node outputs as execution evidence.
 
-### 8. Verify execution and persistence
+### 8. Check and provision the node runtime
+
+1. Call check_workflow_runtime before a run when the outcome matters. Read status, ready, message, and next_action from the response.
+2. status ready means the container is running and nodes will execute inside it. next_action none means nothing is required.
+3. status docker_unavailable means the Docker daemon is not reachable (or the CLI is missing). next_action is ask_user_to_start_docker. Tell the user to start Docker Desktop and stop there: never start the daemon yourself, and setup_workflow_runtime refuses in this state too.
+4. status image_missing or container_missing means the image or the container has to be created. next_action is request_setup_permission. Ask the user whether they want it built and started.
+5. Only after the user agrees, call setup_workflow_runtime. The pre_tool_call hook intercepts it and returns the approval prompt describing the exact Docker commands; the tool runs only after the user approves.
+6. Read setup_workflow_runtime's response: status ready with success true means the container reached running. A non-zero returncode in steps means the build or start failed; report the captured stderr to the user instead of retrying blindly.
+7. status container_stopped means the container exists but is not running. A workflow run starts it automatically; setup_workflow_runtime can start it immediately if the user prefers.
+8. status local_runner means HERMES_WORKFLOW_RUNNER=local: nodes run in Hermes' own execute_code kernel and no container is involved.
+9. Re-run check_workflow_runtime after setup to confirm, then proceed to request_run_workflow.
+
+### 9. Verify execution and persistence
 
 1. Validate Python syntax in the Workflow Studio Execution editor with Validate Code.
 2. Confirm the editor extracts a literal Execution.name, description, category, inputs, outputs, and parameters definition.
@@ -279,7 +295,7 @@ The handler removes the exact matching edge, updates the workflow timestamp, and
 - Python metadata values are literal class attributes so the editor can extract them through AST parsing.
 - build_output is the execution entry point. Put the calculation in run and return the final formatted value from build_output.
 - The runtime receives ordinary dictionaries for inputs, parameters, and context. Access missing keys with explicit defaults or validation.
-- Python source uses the Hermes runtime environment and available imports. Permission and a concrete requirement precede any dependency installation.
+- Python source runs inside the `hermes-workflow` container: its interpreter, its packages, and the mounted `/work` volume. Anything installed only in Hermes' interpreter is absent, and host paths outside the mounts do not exist for node code.
 - Edge compatibility uses exact type equality. Match Text with Text, JSON with JSON, Files with Files, and each other type with its identical counterpart.
 - Edge duplicate detection uses the complete four-field connection tuple, so handle names are part of connection identity.
 - Edge IDs use the exact concatenation formula. Preserve capitalization, underscores, hyphens, and every character in both handle names.
@@ -291,6 +307,14 @@ The handler removes the exact matching edge, updates the workflow timestamp, and
 - Upstream outputs use the sourceHandle key and feed the targetHandle key. Each upstream node returns an object-shaped output for downstream handle lookup.
 - Deleting a workflow node also removes its connected edges. Duplicating a node creates data and a new ID, then requires explicit reconnection.
 - Tool handlers persist JSON workflow and node-library data through the plugin storage layer. Use the tools as the write interface and verify through read-back.
+- check_workflow_runtime never starts anything: no daemon, image, or container. It reports state and the next action, so a missing Docker daemon stays the user's decision.
+- A stopped Docker daemon is the user's action to take. Inform the user and stop; neither tool starts Docker Desktop, and setup_workflow_runtime returns docker_unavailable rather than guessing.
+- setup_workflow_runtime is approval-gated by the plugin's pre_tool_call hook. The hook blocks it while the daemon is down and otherwise returns the approval prompt describing the exact Docker commands; the handler runs only after the user approves.
+- Building the image means `docker compose -f docker-compose.yml up -d --build` at the plugin root, which needs network access for the base image and can take minutes. Report the captured step output on failure.
+- HERMES_WORKFLOW_IMAGE and HERMES_WORKFLOW_CONTAINER select what the check reports, but docker-compose.yml fixes the names it creates. setup_workflow_runtime refuses when either override is set, instead of building something the compose file never produces.
+- A GUI-launched Hermes process has a minimal PATH, so the docker CLI is located through HERMES_WORKFLOW_DOCKER_BIN, PATH, then the usual Docker Desktop install paths. A "Docker CLI not found" result names everything that was searched.
+- The node environment is durable by design: `restart: unless-stopped` brings the container back with Docker, and `/opt/venv`, `/work`, and the uv cache are named volumes, so packages and files survive container recreation and image rebuilds. `docker compose down -v` is the one command that deletes them; never run it without asking.
+- OS-level packages (apt) live in the image, not the volume: add them to the Dockerfile and rebuild. Python packages belong in `/opt/venv` via `uv pip install`.
 
 ## Verification
 
@@ -307,3 +331,5 @@ Verification is complete when the operation's response and a subsequent read agr
 | Request and run workflow     | request_run_workflow returns success with the approval-request broadcast, the user reviews the workflow and code, selects Approve and run, and connected nodes reach success with visible outputs. |
 | Delete workflow node          | The read-back workflow contains neither the node nor any edge referencing its ID.                                                  |
 | Execute node                  | Python validation succeeds, build_output returns a value, and the runtime result reports status: "completed".                      |
+| Check runtime                | check_workflow_runtime reports status ready with container.state running, image.present true, and docker.running true. |
+| Provision runtime            | User approves the prompt, setup_workflow_runtime returns success true with status ready, and a re-run of check_workflow_runtime still reports ready. |

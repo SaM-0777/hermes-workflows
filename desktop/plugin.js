@@ -1545,7 +1545,7 @@ function StudioScope({ children }) {
 }
 
 // desktop/workflows/ui/workflow-library.tsx
-import { Button as Button5, host as host2 } from "@hermes/plugin-sdk";
+import { Button as Button5, Codicon as Codicon5, host as host2 } from "@hermes/plugin-sdk";
 import { useCallback, useEffect as useEffect3, useState as useState3 } from "react";
 
 // desktop/workflows/ui/components/panel-empty.tsx
@@ -2076,6 +2076,7 @@ function WorkflowLibraryPage({ ctx }) {
   const [workflows, setWorkflows] = useState3([]);
   const [pending, setPending] = useState3(true);
   const [error, setError] = useState3("");
+  const [creating, setCreating] = useState3(false);
   const refreshWorkflows = useCallback(async () => {
     setPending(true);
     setError("");
@@ -2093,6 +2094,22 @@ function WorkflowLibraryPage({ ctx }) {
   function openWorkflow(id) {
     host2.navigate(`/workflow-studio?workflowId=${encodeURIComponent(id)}`);
   }
+  async function createNewWorkflow() {
+    if (creating)
+      return;
+    setCreating(true);
+    try {
+      const workflow = await createWorkflow(ctx.rest);
+      openWorkflow(workflow.id);
+    } catch (error2) {
+      host2.notify({
+        kind: "error",
+        message: error2 instanceof Error ? error2.message : "Could not create workflow"
+      });
+    } finally {
+      setCreating(false);
+    }
+  }
   const loader = pending ? /* @__PURE__ */ jsx12(PageLoader, {}) : error ? /* @__PURE__ */ jsx12(PanelEmpty, {
     icon: "error",
     title: "Failed to load workflows",
@@ -2108,22 +2125,36 @@ function WorkflowLibraryPage({ ctx }) {
     children: [
       /* @__PURE__ */ jsx12("div", {
         className: "shrink-0",
-        children: /* @__PURE__ */ jsx12("div", {
+        children: /* @__PURE__ */ jsxs8("div", {
           className: "grid grid-cols-[minmax(0,1fr)_auto_auto] items-center gap-3 px-6 pb-2 pt-[calc(var(--titlebar-height)+1.5rem)]",
-          children: /* @__PURE__ */ jsx12("div", {
-            className: "col-start-1 row-start-1 flex min-w-0 items-center justify-start",
-            children: /* @__PURE__ */ jsx12("div", {
-              className: "hidden min-w-0 flex-wrap items-center gap-x-2 gap-y-1 md:flex",
-              children: /* @__PURE__ */ jsx12(TextTab, {
-                active: true,
-                label: "Saved",
-                meta: workflows.length,
-                onClick: () => {
-                  return;
-                }
+          children: [
+            /* @__PURE__ */ jsx12("div", {
+              className: "col-start-1 row-start-1 flex min-w-0 items-center justify-start",
+              children: /* @__PURE__ */ jsx12("div", {
+                className: "hidden min-w-0 flex-wrap items-center gap-x-2 gap-y-1 md:flex",
+                children: /* @__PURE__ */ jsx12(TextTab, {
+                  active: true,
+                  label: "Saved",
+                  meta: workflows.length,
+                  onClick: () => {
+                    return;
+                  }
+                })
               })
+            }),
+            /* @__PURE__ */ jsxs8(Button5, {
+              size: "sm",
+              onClick: () => void createNewWorkflow(),
+              disabled: creating,
+              className: "col-start-3 row-start-1 justify-self-end",
+              children: [
+                /* @__PURE__ */ jsx12(Codicon5, {
+                  name: "plus"
+                }),
+                "New workflow"
+              ]
             })
-          })
+          ]
         })
       }),
       /* @__PURE__ */ jsx12("div", {
@@ -2145,7 +2176,7 @@ function WorkflowLibraryPage({ ctx }) {
 }
 
 // desktop/workflows/ui/workflow-studio.tsx
-import { Button as Button9, Codicon as Codicon5, host as host4 } from "@hermes/plugin-sdk";
+import { Button as Button9, Codicon as Codicon6, host as host4 } from "@hermes/plugin-sdk";
 import {
   useCallback as useCallback25,
   useEffect as useEffect33,
@@ -38381,9 +38412,12 @@ function SelectContent({
   children: children2,
   side: side2 = "bottom",
   sideOffset = 4,
-  align: align2 = "center",
+  align: align2 = "start",
   alignOffset = 0,
-  alignItemWithTrigger = true,
+  alignItemWithTrigger = false,
+  positionMethod = "fixed",
+  collisionAvoidance = { side: "none", align: "none", fallbackAxisSide: "none" },
+  collisionPadding = 0,
   ...props
 }) {
   const container = useStudioPortalContainer();
@@ -38395,6 +38429,9 @@ function SelectContent({
       align: align2,
       alignOffset,
       alignItemWithTrigger,
+      positionMethod,
+      collisionAvoidance,
+      collisionPadding,
       className: "isolate z-50",
       children: /* @__PURE__ */ jsxs13(exports_index_parts5.Popup, {
         "data-slot": "select-content",
@@ -115373,7 +115410,7 @@ function WorkflowStudioPage({ ctx }) {
     } catch {
       setNameStatus("idle");
     }
-  }, [ctx.rest, workflowId]);
+  }, [ctx.rest, setNameDraft, setNameStatus, setWorkflow, workflowId]);
   useEffect33(() => {
     const current = workflowRef.current;
     const normalized = nameDraft.trim() || name;
@@ -115404,7 +115441,7 @@ function WorkflowStudioPage({ ctx }) {
             onClick: () => host4.navigate("/workflows"),
             size: "icon-xs",
             variant: "ghost",
-            children: /* @__PURE__ */ jsx49(Codicon5, {
+            children: /* @__PURE__ */ jsx49(Codicon6, {
               name: "chevron-left",
               size: "0.875rem"
             })

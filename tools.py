@@ -1,7 +1,11 @@
 from datetime import datetime, timezone
 import json
+import os
 from pathlib import Path
 import re
+import shutil
+import subprocess
+import time
 import uuid
 import logging
 from plugins.plugin_storage import plugin_data_dir
@@ -1014,3 +1018,421 @@ def request_run_workflow(params, **kwargs):
                 "error": str(exc),
             }
         )
+
+
+# --- Runtime checks ------------------------------------------------------
+#
+# Agent-facing view of the container that workflow nodes execute in. The
+# dashboard backend (dashboard/plugin_api.py) drives the same container; it
+# keeps its own copies of these calls because it is imported as a standalone
+# module, so keep the two in step when either side changes.
+#
+# Nothing here starts the Docker daemon: that is the user's action to take, and
+# the tool says so. Building the image or creating the container is gated by the
+# pre_tool_call approval hook in __init__.py.
+
+RUNTIME_IMAGE = "hermes-workflow:latest"
+RUNTIME_CONTAINER = "hermes-workflow"
+RUNTIME_COMPOSE_FILE = Path(__file__).resolve().parent / "docker-compose.yml"
+
+# Finder/Electron-launched processes get the GUI PATH, which never holds a
+# Docker Desktop CLI under ~/.docker/bin or the app bundle.
+_DOCKER_BIN_CANDIDATES = (
+    "~/.docker/bin/docker",
+    "/Applications/Docker.app/Contents/Resources/bin/docker",
+    "/usr/local/bin/docker",
+    "/opt/homebrew/bin/docker",
+    "/usr/bin/docker",
+)
+_DAEMON_DOWN_HINTS = (
+    "cannot connect to the docker daemon",
+    "error during connect",
+    "is the docker daemon running",
+    "dial unix",
+    "failed to connect to the docker api",
+    "docker.sock",
+)
+_DOCKER_BINARY_CACHE = {}
+
+
+def _runtime_runner():
+    return (os.environ.get("HERMES_WORKFLOW_RUNNER") or "").strip().lower() or "docker"
+
+
+def _runtime_image():
+    return (os.environ.get("HERMES_WORKFLOW_IMAGE") or "").strip() or RUNTIME_IMAGE
+
+
+def _runtime_container():
+    return (os.environ.get("HERMES_WORKFLOW_CONTAINER") or "").strip() or RUNTIME_CONTAINER
+
+
+def _runtime_docker_binary():
+    cached = _DOCKER_BINARY_CACHE.get("path")
+    if cached is not None:
+        return cached
+
+    configured = (os.environ.get("HERMES_WORKFLOW_DOCKER_BIN") or "").strip()
+    found = ""
+    if configured:
+        found = shutil.which(configured) or (
+            configured
+            if os.path.isfile(configured) and os.access(configured, os.X_OK)
+            else ""
+        )
+    if not found:
+        found = shutil.which("docker") or ""
+    if not found:
+        for candidate in _DOCKER_BIN_CANDIDATES:
+            path = os.path.expanduser(candidate)
+            if os.path.isfile(path) and os.access(path, os.X_OK):
+                found = path
+                break
+
+    _DOCKER_BINARY_CACHE["path"] = found
+    return found
+
+
+def _runtime_docker(args, timeout=60):
+    binary = _runtime_docker_binary()
+    if not binary:
+        raise RuntimeError(
+            "Docker CLI not found. Searched HERMES_WORKFLOW_DOCKER_BIN, PATH, and "
+            + ", ".join(_DOCKER_BIN_CANDIDATES)
+            + ". Ask the user to install Docker Desktop or set "
+            "HERMES_WORKFLOW_DOCKER_BIN."
+        )
+    try:
+        return subprocess.run(
+            [binary, *args],
+            capture_output=True,
+            text=True,
+            timeout=timeout,
+        )
+    except subprocess.TimeoutExpired as exc:
+        raise RuntimeError(f"`docker {args[0]}` exceeded {timeout}s.") from exc
+
+
+def _daemon_state():
+    """``{"running": bool, "server_version": str, "error": str}``."""
+    try:
+        proc = _runtime_docker(["info", "--format", "{{.ServerVersion}}"], timeout=30)
+    except RuntimeError as exc:
+        return {"running": False, "server_version": "", "error": str(exc)}
+    if proc.returncode == 0:
+        return {
+            "running": True,
+            "server_version": (proc.stdout or "").strip(),
+            "error": "",
+        }
+    stderr = (proc.stderr or "").strip()
+    detail = stderr.splitlines()[0] if stderr else "docker info failed."
+    return {"running": False, "server_version": "", "error": detail}
+
+
+def _image_state(image):
+    try:
+        proc = _runtime_docker(["image", "inspect", image], timeout=30)
+    except RuntimeError as exc:
+        return {"present": False, "error": str(exc)}
+    if proc.returncode == 0:
+        return {"present": True, "error": ""}
+    stderr = (proc.stderr or "").strip()
+    return {"present": False, "error": stderr.splitlines()[0] if stderr else ""}
+
+
+def _container_state(name):
+    try:
+        proc = _runtime_docker(
+            ["ps", "-a", "--filter", f"name=^{name}$", "--format", "{{.State}}"],
+            timeout=30,
+        )
+    except RuntimeError:
+        return ""
+    if proc.returncode != 0:
+        return ""
+    states = [line.strip() for line in (proc.stdout or "").splitlines() if line.strip()]
+    return states[0] if states else ""
+
+
+def _runtime_snapshot():
+    """Everything an agent (or the user) needs to decide the next step."""
+    runner = _runtime_runner()
+    snapshot = {
+        "runner": runner,
+        "image": {"name": _runtime_image(), "present": False},
+        "container": {"name": _runtime_container(), "state": ""},
+        "docker": {
+            "binary": _runtime_docker_binary(),
+            "running": False,
+            "server_version": "",
+            "error": "",
+        },
+    }
+    if runner != "docker":
+        snapshot.update(
+            {
+                "status": "local_runner",
+                "ready": True,
+                "message": (
+                    "Nodes run in Hermes' own execute_code kernel because "
+                    "HERMES_WORKFLOW_RUNNER=local; no container is used."
+                ),
+                "next_action": "none",
+            }
+        )
+        return snapshot
+
+    daemon = _daemon_state()
+    snapshot["docker"].update(daemon)
+    if not daemon["running"]:
+        snapshot.update(
+            {
+                "status": "docker_unavailable",
+                "ready": False,
+                "message": (
+                    "The Docker daemon is not reachable"
+                    + (f" ({daemon['error']})" if daemon["error"] else "")
+                    + ". Workflow nodes cannot run until Docker is started. Ask the "
+                    "user to start Docker Desktop; do not start it for them."
+                ),
+                "next_action": "ask_user_to_start_docker",
+            }
+        )
+        return snapshot
+
+    image = _image_state(_runtime_image())
+    snapshot["image"].update(image)
+    state = _container_state(_runtime_container())
+    snapshot["container"]["state"] = state
+
+    if not image["present"]:
+        snapshot.update(
+            {
+                "status": "image_missing",
+                "ready": False,
+                "message": (
+                    f"Image '{_runtime_image()}' is missing. Ask the user for "
+                    "permission to build it, then call setup_workflow_runtime. That "
+                    "tool is gated by the approval prompt; nothing is built or "
+                    "started without the user approving."
+                ),
+                "next_action": "request_setup_permission",
+            }
+        )
+        return snapshot
+
+    if not state:
+        snapshot.update(
+            {
+                "status": "container_missing",
+                "ready": False,
+                "message": (
+                    f"Container '{_runtime_container()}' does not exist (the image is "
+                    "present). Ask the user for permission to create and start it, "
+                    "then call setup_workflow_runtime."
+                ),
+                "next_action": "request_setup_permission",
+            }
+        )
+        return snapshot
+
+    if state != "running":
+        snapshot.update(
+            {
+                "status": "container_stopped",
+                "ready": False,
+                "message": (
+                    f"Container '{_runtime_container()}' is {state}. A workflow run "
+                    "starts it automatically; ask the user before calling "
+                    "setup_workflow_runtime to start it now."
+                ),
+                "next_action": "request_setup_permission",
+            }
+        )
+        return snapshot
+
+    snapshot.update(
+        {
+            "status": "ready",
+            "ready": True,
+            "message": (
+                f"Container '{_runtime_container()}' is running with image "
+                f"'{_runtime_image()}'; workflow nodes execute inside it."
+            ),
+            "next_action": "none",
+        }
+    )
+    return snapshot
+
+
+def _compose(args, timeout=900):
+    """Run `docker compose -f <plugin>/docker-compose.yml <args…>`."""
+    return _runtime_docker(
+        ["compose", "-f", str(RUNTIME_COMPOSE_FILE), *args], timeout=timeout
+    )
+
+
+def check_workflow_runtime(params, **kwargs):
+    try:
+        snapshot = _runtime_snapshot()
+        return _result({"success": True, **snapshot})
+    except Exception as exc:  # pragma: no cover - defensive
+        return _error(str(exc))
+
+
+def setup_workflow_runtime(params, **kwargs):
+    """Build the node image and/or start its container. Approval-gated upstream."""
+    try:
+        snapshot = _runtime_snapshot()
+        if snapshot["status"] == "local_runner":
+            return _result(
+                {
+                    "success": False,
+                    "error": (
+                        "HERMES_WORKFLOW_RUNNER=local: nodes run in Hermes' own "
+                        "kernel, so there is no container to set up."
+                    ),
+                }
+            )
+        if snapshot["status"] == "docker_unavailable":
+            return _result(
+                {
+                    "success": False,
+                    "error": (
+                        "The Docker daemon is not reachable"
+                        + (
+                            f" ({snapshot['docker']['error']})"
+                            if snapshot["docker"]["error"]
+                            else ""
+                        )
+                        + ". Ask the user to start Docker Desktop, then retry."
+                    ),
+                    "status": "docker_unavailable",
+                }
+            )
+
+        steps = []
+        image = _runtime_image()
+        container = _runtime_container()
+
+        if image != RUNTIME_IMAGE or container != RUNTIME_CONTAINER:
+            # docker-compose.yml fixes both names; honouring an override here would
+            # build/start something the compose file never produces.
+            return _result(
+                {
+                    "success": False,
+                    "status": snapshot["status"],
+                    "error": (
+                        "HERMES_WORKFLOW_IMAGE / HERMES_WORKFLOW_CONTAINER override the "
+                        f"compose defaults, which are image '{RUNTIME_IMAGE}' and "
+                        f"container '{RUNTIME_CONTAINER}'. Start the overridden "
+                        "container directly, or unset the overrides."
+                    ),
+                }
+            )
+
+        if not snapshot["image"]["present"]:
+            built = _compose(["up", "-d", "--build"])
+            steps.append(
+                {
+                    "step": "build_and_run",
+                    "command": f"docker compose -f {RUNTIME_COMPOSE_FILE} up -d --build",
+                    "returncode": built.returncode,
+                    "output": (built.stdout or "").strip()[-1500:],
+                    "error": (built.stderr or "").strip()[-1500:],
+                }
+            )
+            if built.returncode != 0:
+                return _result(
+                    {
+                        "success": False,
+                        "status": "image_missing",
+                        "error": (
+                            "Building image "
+                            f"'{image}' failed. {(built.stderr or '').strip()[-800:]}"
+                        ),
+                        "steps": steps,
+                    }
+                )
+        elif not snapshot["container"]["state"]:
+            created = _compose(["up", "-d"])
+            steps.append(
+                {
+                    "step": "create_and_run",
+                    "command": f"docker compose -f {RUNTIME_COMPOSE_FILE} up -d",
+                    "returncode": created.returncode,
+                    "output": (created.stdout or "").strip()[-1500:],
+                    "error": (created.stderr or "").strip()[-1500:],
+                }
+            )
+            if created.returncode != 0:
+                return _result(
+                    {
+                        "success": False,
+                        "status": "container_missing",
+                        "error": (
+                            f"Creating container '{container}' failed. "
+                            f"{(created.stderr or '').strip()[-800:]}"
+                        ),
+                        "steps": steps,
+                    }
+                )
+        elif snapshot["container"]["state"] != "running":
+            started = _runtime_docker(["start", container], timeout=60)
+            steps.append(
+                {
+                    "step": "start_container",
+                    "command": f"docker start {container}",
+                    "returncode": started.returncode,
+                    "output": (started.stdout or "").strip()[-1500:],
+                    "error": (started.stderr or "").strip()[-1500:],
+                }
+            )
+            if started.returncode != 0:
+                return _result(
+                    {
+                        "success": False,
+                        "status": "container_stopped",
+                        "error": (
+                            f"Starting container '{container}' failed. "
+                            f"{(started.stderr or '').strip()[-800:]}"
+                        ),
+                        "steps": steps,
+                    }
+                )
+
+        # Confirm the container reached "running" before claiming success.
+        deadline = time.monotonic() + 30
+        state = _container_state(container)
+        while state != "running" and time.monotonic() < deadline:
+            time.sleep(0.5)
+            state = _container_state(container)
+
+        if state != "running":
+            return _result(
+                {
+                    "success": False,
+                    "status": "container_stopped",
+                    "error": (
+                        f"Container '{container}' did not reach 'running'. "
+                        f"Inspect it with: docker logs {container}"
+                    ),
+                    "steps": steps,
+                }
+            )
+
+        return _result(
+            {
+                "success": True,
+                "status": "ready",
+                "message": (
+                    f"Container '{container}' is running with image '{image}'; "
+                    "workflow nodes execute inside it."
+                ),
+                "steps": steps,
+                "runtime": _runtime_snapshot(),
+            }
+        )
+    except Exception as exc:  # pragma: no cover - defensive
+        return _error(str(exc))

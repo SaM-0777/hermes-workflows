@@ -28,6 +28,9 @@ provides_tools:
   - add_workflow_edge
   - remove_workflow_edge
   - request_run_workflow
+  # Runtime
+  - check_workflow_runtime
+  - setup_workflow_runtime
 provides_hooks:
   - pre_tool_call
 

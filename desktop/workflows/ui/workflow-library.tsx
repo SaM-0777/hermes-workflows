@@ -1,10 +1,14 @@
-import { Button, host } from "@hermes/plugin-sdk";
+import { Button, Codicon, host } from "@hermes/plugin-sdk";
 import { useCallback, useEffect, useState } from "react";
 import { PanelEmpty } from "./components/panel-empty";
 import { PageLoader } from "./components/page-loader";
 import { TextTab } from "./components/text-tab";
 import { WorkflowBrowser } from "./components/workflow-browser";
-import { readWorkflows, WorkflowRest } from "../lib/workflow-storage";
+import {
+  createWorkflow,
+  readWorkflows,
+  WorkflowRest,
+} from "../lib/workflow-storage";
 import type { WorkflowDocument } from "../lib/workflow-validation";
 
 export interface WorkflowLibraryPageProps {
@@ -18,6 +22,7 @@ export function WorkflowLibraryPage({ ctx }: WorkflowLibraryPageProps) {
   const [workflows, setWorkflows] = useState<WorkflowDocument[]>([]);
   const [pending, setPending] = useState(true);
   const [error, setError] = useState("");
+  const [creating, setCreating] = useState(false);
 
   const refreshWorkflows = useCallback(async () => {
     setPending(true);
@@ -39,6 +44,24 @@ export function WorkflowLibraryPage({ ctx }: WorkflowLibraryPageProps) {
 
   function openWorkflow(id: string) {
     host.navigate(`/workflow-studio?workflowId=${encodeURIComponent(id)}`);
+  }
+
+  async function createNewWorkflow() {
+    if (creating) return;
+    setCreating(true);
+
+    try {
+      const workflow = await createWorkflow(ctx.rest);
+      openWorkflow(workflow.id);
+    } catch (error) {
+      host.notify({
+        kind: "error",
+        message:
+          error instanceof Error ? error.message : "Could not create workflow",
+      });
+    } finally {
+      setCreating(false);
+    }
   }
 
   const loader = pending ? (
@@ -70,6 +93,15 @@ export function WorkflowLibraryPage({ ctx }: WorkflowLibraryPageProps) {
               />
             </div>
           </div>
+          <Button
+            size="sm"
+            onClick={() => void createNewWorkflow()}
+            disabled={creating}
+            className="col-start-3 row-start-1 justify-self-end"
+          >
+            <Codicon name="plus" />
+            New workflow
+          </Button>
         </div>
       </div>
       <div className="min-h-0 flex-1 overflow-hidden bg-(--ui-chat-surface-background)">
