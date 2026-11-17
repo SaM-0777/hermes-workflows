@@ -90,7 +90,7 @@ export function MediaField({
       );
     } else if (unresolved.length) {
       setError(
-        `No path for ${unresolved.join(", ")} — drop files from Finder into the app window.`,
+        `No path for ${unresolved.join(", ")} — drop the files into the app window.`,
       );
     } else {
       setError(null);

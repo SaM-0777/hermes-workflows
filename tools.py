@@ -5,6 +5,7 @@ from pathlib import Path
 import re
 import shutil
 import subprocess
+import sys
 import time
 import uuid
 import logging
@@ -1109,14 +1110,8 @@ RUNTIME_CONTAINER = "hermes-workflow"
 RUNTIME_COMPOSE_FILE = Path(__file__).resolve().parent / "docker-compose.yml"
 
 # Finder/Electron-launched processes get the GUI PATH, which never holds a
-# Docker Desktop CLI under ~/.docker/bin or the app bundle.
-_DOCKER_BIN_CANDIDATES = (
-    "~/.docker/bin/docker",
-    "/Applications/Docker.app/Contents/Resources/bin/docker",
-    "/usr/local/bin/docker",
-    "/opt/homebrew/bin/docker",
-    "/usr/bin/docker",
-)
+# Docker Desktop CLI under ~/.docker/bin or the app bundle. docker_cli.py owns
+# the per-OS search so this module and the backend cannot disagree.
 _DAEMON_DOWN_HINTS = (
     "cannot connect to the docker daemon",
     "error during connect",
@@ -1125,7 +1120,31 @@ _DAEMON_DOWN_HINTS = (
     "failed to connect to the docker api",
     "docker.sock",
 )
-_DOCKER_BINARY_CACHE = {}
+
+
+def _load_docker_cli():
+    """Import docker_cli.py beside this file, once, under a stable name.
+
+    tools.py is imported as a standalone module, so a relative import is not
+    available and the plugin directory is not guaranteed to be on sys.path.
+    """
+    module = sys.modules.get("hermes_workflow_docker_cli")
+    if module is not None:
+        return module
+
+    import importlib.util
+
+    path = Path(__file__).resolve().parent / "docker_cli.py"
+    spec = importlib.util.spec_from_file_location("hermes_workflow_docker_cli", path)
+    if spec is None or spec.loader is None:
+        raise RuntimeError(f"Cannot load the docker CLI helper at {path}.")
+    module = importlib.util.module_from_spec(spec)
+    sys.modules["hermes_workflow_docker_cli"] = module
+    spec.loader.exec_module(module)
+    return module
+
+
+_DOCKER_CLI = _load_docker_cli()
 
 
 def _runtime_runner():
@@ -1141,46 +1160,23 @@ def _runtime_container():
 
 
 def _runtime_docker_binary():
-    cached = _DOCKER_BINARY_CACHE.get("path")
-    if cached is not None:
-        return cached
-
-    configured = (os.environ.get("HERMES_WORKFLOW_DOCKER_BIN") or "").strip()
-    found = ""
-    if configured:
-        found = shutil.which(configured) or (
-            configured
-            if os.path.isfile(configured) and os.access(configured, os.X_OK)
-            else ""
-        )
-    if not found:
-        found = shutil.which("docker") or ""
-    if not found:
-        for candidate in _DOCKER_BIN_CANDIDATES:
-            path = os.path.expanduser(candidate)
-            if os.path.isfile(path) and os.access(path, os.X_OK):
-                found = path
-                break
-
-    _DOCKER_BINARY_CACHE["path"] = found
-    return found
+    return _DOCKER_CLI.find_docker_binary()
 
 
 def _runtime_docker(args, timeout=60):
     binary = _runtime_docker_binary()
     if not binary:
         raise RuntimeError(
-            "Docker CLI not found. Searched HERMES_WORKFLOW_DOCKER_BIN, PATH, and "
-            + ", ".join(_DOCKER_BIN_CANDIDATES)
-            + ". Ask the user to install Docker Desktop or set "
-            "HERMES_WORKFLOW_DOCKER_BIN."
+            "Docker CLI not found. Searched "
+            + _DOCKER_CLI.searched()
+            + ". Install Docker (Docker Desktop on macOS/Windows), or set "
+            "HERMES_WORKFLOW_DOCKER_BIN to the docker binary's full path."
         )
     try:
         return subprocess.run(
             [binary, *args],
-            capture_output=True,
-            text=True,
             timeout=timeout,
+            **_DOCKER_CLI.subprocess_kwargs(),
         )
     except subprocess.TimeoutExpired as exc:
         raise RuntimeError(f"`docker {args[0]}` exceeded {timeout}s.") from exc
@@ -1410,7 +1406,7 @@ def setup_workflow_runtime(params, **kwargs):
             steps.append(
                 {
                     "step": "build_and_run",
-                    "command": f"docker compose -f {RUNTIME_COMPOSE_FILE} up -d --build",
+                    "command": f'docker compose -f "{RUNTIME_COMPOSE_FILE}" up -d --build',
                     "returncode": built.returncode,
                     "output": (built.stdout or "").strip()[-1500:],
                     "error": (built.stderr or "").strip()[-1500:],

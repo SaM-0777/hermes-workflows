@@ -30,6 +30,7 @@ import re
 import shlex
 import shutil
 import subprocess
+import sys
 import tempfile
 import time
 from typing import Any, Literal
@@ -471,18 +472,34 @@ _DAEMON_DOWN_HINTS = (
 )
 
 _PYTHON_CACHE: dict[str, str] = {}
-_DOCKER_BIN_CACHE: dict[str, str] = {}
 
-# Desktop apps (and anything else launched from Finder/Electron) inherit the GUI
-# PATH — /usr/bin:/bin:/usr/sbin:/sbin — where a Docker Desktop CLI installed
-# under ~/.docker/bin or the app bundle never appears. Look there directly.
-_DOCKER_BIN_CANDIDATES = (
-    "~/.docker/bin/docker",
-    "/Applications/Docker.app/Contents/Resources/bin/docker",
-    "/usr/local/bin/docker",
-    "/opt/homebrew/bin/docker",
-    "/usr/bin/docker",
-)
+
+def _load_docker_cli():
+    """Import the plugin's docker_cli.py once, under a stable module name.
+
+    This module is imported standalone by the dashboard layer, so it resolves the
+    helper by path instead of relying on a package-relative import.
+    """
+    module = sys.modules.get("hermes_workflow_docker_cli")
+    if module is not None:
+        return module
+
+    import importlib.util
+
+    path = Path(__file__).resolve().parents[1] / "docker_cli.py"
+    spec = importlib.util.spec_from_file_location("hermes_workflow_docker_cli", path)
+    if spec is None or spec.loader is None:
+        raise RuntimeError(f"Cannot load the docker CLI helper at {path}.")
+    module = importlib.util.module_from_spec(spec)
+    sys.modules["hermes_workflow_docker_cli"] = module
+    spec.loader.exec_module(module)
+    return module
+
+
+# Per-OS CLI discovery lives in docker_cli.py, shared with tools.py: a GUI-launched
+# process has a minimal PATH, so the CLI is also looked for in the install
+# locations of whichever OS this is.
+_DOCKER_CLI = _load_docker_cli()
 
 
 def _runner_name() -> str:
@@ -525,39 +542,19 @@ def _node_timeout() -> int:
 
 
 def _docker_binary() -> str:
-    """Absolute path to a working docker CLI, or "" when none is found.
+    """Absolute path to a working docker CLI, or "" when none is found."""
+    return _DOCKER_CLI.find_docker_binary()
 
-    GUI-launched processes have a minimal PATH, so the configured value and PATH
-    are tried first, then the usual Docker Desktop install locations.
-    """
-    cached = _DOCKER_BIN_CACHE.get("path")
-    if cached:
-        return cached
 
-    configured = (os.environ.get("HERMES_WORKFLOW_DOCKER_BIN") or "").strip()
-    if configured:
-        resolved = shutil.which(configured) or (
-            configured if os.path.isfile(configured) and os.access(configured, os.X_OK) else ""
-        )
-        if resolved:
-            _DOCKER_BIN_CACHE["path"] = resolved
-            return resolved
-
-    found = shutil.which("docker")
-    if not found:
-        for candidate in _DOCKER_BIN_CANDIDATES:
-            path = os.path.expanduser(candidate)
-            if os.path.isfile(path) and os.access(path, os.X_OK):
-                found = path
-                break
-
-    _DOCKER_BIN_CACHE["path"] = found or ""
-    return _DOCKER_BIN_CACHE["path"]
+def _quoted(value: str) -> str:
+    """Quote a path for the copy-paste command shown to the user."""
+    return f'"{value}"' if " " in value else value
 
 
 def _compose_command() -> str:
     binary = _docker_binary() or "docker"
-    return f"{binary} compose -f {Path(__file__).resolve().parents[1] / 'docker-compose.yml'} up -d"
+    compose_file = Path(__file__).resolve().parents[1] / "docker-compose.yml"
+    return f'{_quoted(binary)} compose -f {_quoted(str(compose_file))} up -d'
 
 
 def _docker(
@@ -569,21 +566,18 @@ def _docker(
     """Run one docker CLI command. Transport failures become node errors."""
     binary = _docker_binary()
     if not binary:
-        searched = ", ".join(
-            [os.environ.get("HERMES_WORKFLOW_DOCKER_BIN", ""), "PATH", *_DOCKER_BIN_CANDIDATES]
-        )
         raise NodeExecutionError(
             "Docker CLI not found. Searched: "
-            f"{searched}. Install Docker Desktop, or set "
-            "HERMES_WORKFLOW_DOCKER_BIN to the docker binary's full path."
+            f"{_DOCKER_CLI.searched()}. Install Docker (Docker Desktop on "
+            "macOS/Windows), or set HERMES_WORKFLOW_DOCKER_BIN to the docker "
+            "binary's full path."
         )
     try:
         proc = subprocess.run(
             [binary, *args],
             input=input_text,
-            capture_output=True,
-            text=True,
             timeout=timeout,
+            **_DOCKER_CLI.subprocess_kwargs(),
         )
     except FileNotFoundError as exc:
         raise NodeExecutionError(

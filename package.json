@@ -9,7 +9,7 @@
     "build:plugin": "bun scripts/build-plugin.ts",
     "lint": "eslint .",
     "preview": "vite preview",
-    "release": "bun run build && bun run build:plugin && cp ~/.hermes/plugins/hermes-workflow/desktop/plugin.js ~/.hermes/desktop-plugins/hermes-workflow/plugin.js"
+    "release": "bun run build && bun run build:plugin && bun scripts/copy-plugin.ts"
   },
   "dependencies": {
     "@base-ui/react": "^1.9.0",

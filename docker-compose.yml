@@ -52,7 +52,10 @@ services:
       # studio stores for image/video parameters (and the paths nodes return)
       # resolve identically inside the container. Writable because annotated
       # results have to be readable by the studio on the host again.
-      - ${HOME:-/Users/sam}:${HOME:-/Users/sam}:rw
+      # HERMES_WORKFLOW_HOST_HOME overrides the shared tree — set it in this
+      # directory's .env when HOME is not what you want shared (on Windows HOME
+      # is usually unset, and a native drive path cannot be a container target).
+      - ${HERMES_WORKFLOW_HOST_HOME:-${HOME}}:${HERMES_WORKFLOW_HOST_HOME:-${HOME}}:rw
     security_opt:
       - no-new-privileges:true
     stop_grace_period: 5s

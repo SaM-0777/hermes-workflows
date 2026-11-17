@@ -2,7 +2,7 @@
  * Media references as the studio stores them.
  *
  * A media parameter or port holds a JSON array of absolute paths, e.g.
- * `["/Users/me/Pictures/a.png", "/Users/me/Pictures/b.png"]`. The node's Python
+ * `["/home/me/pictures/a.png", "/home/me/pictures/b.png"]`. The node's Python
  * receives exactly that array and turns it into real files with the loader
  * classes `lib/python-code.ts` generates (`ImageFiles`, `VideoFiles`,
  * `AudioFiles`). Nothing is copied and nothing is uploaded: the paths are the
