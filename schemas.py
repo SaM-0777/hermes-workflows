@@ -1,85 +1,47 @@
 DATA_TYPES = [
-    "Any",
-    "String",
-    "Number",
-    "Boolean",
-    "Object",
-    "Array",
-    "Image",
-    "Audio",
-    "Video",
-    "File",
+    "Text",
+    "Dataset",
+    "Images",
+    "Videos",
+    "Audios",
 ]
 
 # Schemas
 
-# Partial Correct:
+# Per-type defaultValue encoding. The persisted defaultValue is always a string
+# whose content encodes the selected type (see CONFIG_SCHEMA).
 OneOf = [
     {
         "properties": {
-            "type": {"const": "String"},
+            "type": {"const": "Text"},
             "defaultValue": {"type": "string"},
         },
         "required": ["type", "defaultValue"],
     },
     {
         "properties": {
-            "type": {"const": "Number"},
-            "defaultValue": {"type": "number"},
-        },
-        "required": ["type", "defaultValue"],
-    },
-    {
-        "properties": {
-            "type": {"const": "Boolean"},
-            "defaultValue": {"type": "boolean"},
-        },
-        "required": ["type", "defaultValue"],
-    },
-    {
-        "properties": {
-            "type": {"const": "Object"},
-            "defaultValue": {"type": "object"},
-        },
-        "required": ["type", "defaultValue"],
-    },
-    {
-        "properties": {
-            "type": {"const": "Array"},
-            "defaultValue": {"type": "array"},
-        },
-        "required": ["type", "defaultValue"],
-    },
-    {
-        "properties": {
-            "type": {"const": "Any"},
-        },
-        "required": ["type", "defaultValue"],
-    },
-    {
-        "properties": {
-            "type": {"const": "Image"},
+            "type": {"const": "Dataset"},
             "defaultValue": {"type": "string"},
         },
         "required": ["type", "defaultValue"],
     },
     {
         "properties": {
-            "type": {"const": "Audio"},
+            "type": {"const": "Images"},
             "defaultValue": {"type": "string"},
         },
         "required": ["type", "defaultValue"],
     },
     {
         "properties": {
-            "type": {"const": "Video"},
+            "type": {"const": "Videos"},
             "defaultValue": {"type": "string"},
         },
         "required": ["type", "defaultValue"],
     },
     {
         "properties": {
-            "type": {"const": "File"},
+            "type": {"const": "Audios"},
             "defaultValue": {"type": "string"},
         },
         "required": ["type", "defaultValue"],
@@ -182,11 +144,9 @@ CONFIG_SCHEMA = {
                         "description": (
                             "Default value for this parameter, provided as a string. "
                             "Its actual value must match the selected parameter type. "
-                            "Examples: type='Number', defaultValue='5'; "
-                            "type='Boolean', defaultValue='true'; "
-                            "type='String', defaultValue='hello'; "
-                            "type='Array', defaultValue='[1, 2, 3]'; "
-                            "type='Object', defaultValue='{\"key\": \"value\"}'."
+                            "Examples: type='Text', defaultValue='hello'; "
+                            "type='Dataset', defaultValue='/data/mnist'; "
+                            "type='Images', defaultValue='[\"/data/a.png\"]'."
                         ),
                     },
                 },

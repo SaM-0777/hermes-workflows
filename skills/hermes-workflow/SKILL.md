@@ -80,8 +80,8 @@ Use the exact registered tool names and schema field names below. Tool responses
 ### 2. Create or update reusable node definitions
 
 1. Build data.general with name, description, and category. Node names start with a letter and use letters, numbers, underscores, or hyphens; names are 1–64 characters. Descriptions are at most 500 characters.
-2. Build data.io with inputs and outputs. Each port has an exact name and one of Text, Dataset, Images, Videos, Audios, Files, or JSON as its UI type.
-3. Build data.config.parameters as a list of objects containing name, type, and string defaultValue. Parameter names are unique within the configuration. The string defaultValue must encode a value that matches the selected parameter type. Use Text values as their literal text, Dataset values as a local path or an http(s) URL, JSON values as valid JSON text such as {"key": "value"}, and Images, Videos, Audios, and Files values as a JSON array of path references such as ["/data/a.png"].
+2. Build data.io with inputs and outputs. Each port has an exact name and one of Text, Dataset, Images, Videos, or Audios as its UI type.
+3. Build data.config.parameters as a list of objects containing name, type, and string defaultValue. Parameter names are unique within the configuration. The string defaultValue must encode a value that matches the selected parameter type. Use Text values as their literal text, Dataset values as a local path or an http(s) URL, and Images, Videos, and Audios values as a JSON array of path references such as ["/data/a.png"].
 4. Build data.execution.pythonCode with a complete Python source string containing the required Execution class described below.
 5. Call create_node for a new reusable library node. Call update_node with the saved node UUID and complete updated data for an existing library node.
 6. Use get_node_by_id after the write to confirm the persisted definition.
@@ -172,13 +172,13 @@ outputs: list[dict] = [
    ]
 ```
 
-For a JSON parameter named options with a default, use:
+For a Dataset parameter named data_path with a default, use:
 
 ```
 parameters: dict = {
-       "options": {
-           "type": dict,
-           "default": {"limit": 10},
+       "data_path": {
+           "type": str,
+           "default": "/data/mnist",
        },
    }
 ```
@@ -189,10 +189,9 @@ The persisted configuration schema stores defaultValue as a string while requiri
 | --- | --- | --- |
 | Text | "hello" | "hello" |
 | Dataset | "/data/mnist" or "https://example.com/data.csv" | The same string |
-| JSON | "{\"key\": \"value\"}" | {"key": "value"} |
-| Images, Videos, Audios, Files | "[\"/data/a.png\"]" (JSON array of path references) | ["/data/a.png"] |
+| Images, Videos, Audios | "[\"/data/a.png\"]" (JSON array of path references) | ["/data/a.png"] |
 
-Before calling create_node, add_node_to_workflow, update_node, or update_workflow_node, parse and type-check each defaultValue according to its selected type. Then mirror the parsed value in Execution.parameters using the matching Python type. The Python-to-UI type mapping is str → Text (or Dataset), dict → JSON, list → Files, and the legacy float, int, bool, and Any annotations → JSON. Use matching representations in both directions whenever metadata changes.
+Before calling create_node, add_node_to_workflow, update_node, or update_workflow_node, parse and type-check each defaultValue according to its selected type. Then mirror the parsed value in Execution.parameters using the matching Python type. The Python-to-UI type mapping is str → Text (or Dataset) and list → Images, Videos, or Audios (the port's "media" key decides which). Annotations with no UI counterpart — dict, a bare list, and the legacy float, int, bool, and Any — resolve to no studio type, so keeping metadata synchronized means using str and list only. Use matching representations in both directions whenever metadata changes.
 
 ### 5. Connect compatible nodes
 
@@ -331,7 +330,7 @@ The handler removes the exact matching edge, updates the workflow timestamp, and
 - create_node and add_node_to_workflow require valid general, io, config, and execution sections.
 - The current add_node_to_workflow handler routes its execution argument through the config validator, while its schema describes execution.pythonCode. Treat the schema and handler as an implementation mismatch, inspect the live response, and use add_library_node_to_workflow or update_workflow_node for a verified Python-backed node path. A working direct path: pass execution as {"pythonCode": ..., "parameters": []} so the config validator's array check passes, then call update_workflow_node with execution {"pythonCode": ...} to strip the placeholder key.
 - update_node receives complete replacement data. update_workflow_node receives selected sections and preserves the remaining sections.
-- Parameter defaultValue is serialized as a string in the tool schema and carries a type-specific value. Match Text and Dataset with plain text, JSON with valid JSON text, and Images, Videos, Audios, and Files with a JSON array of path references.
+- Parameter defaultValue is serialized as a string in the tool schema and carries a type-specific value. Match Text and Dataset with plain text, and Images, Videos, and Audios with a JSON array of path references.
 - The execution class stores the same parameter default as a native Python value. Keep data.config.parameters.defaultValue and Execution.parameters[name].default synchronized.
 - Port names are unique within each input or output direction and are matched exactly when edges are created.
 - Python type metadata uses the Python vocabulary while persisted JSON uses the UI vocabulary. Keep the mapping synchronized.
@@ -339,7 +338,7 @@ The handler removes the exact matching edge, updates the workflow timestamp, and
 - build_output is the execution entry point. Put the calculation in run and return the final formatted value from build_output.
 - The runtime receives ordinary dictionaries for inputs, parameters, and context. Access missing keys with explicit defaults or validation.
 - Python source runs inside the `hermes-workflow` container: its interpreter, its packages, and the mounted `/work` volume. Anything installed only in Hermes' interpreter is absent, and host paths outside the mounts do not exist for node code.
-- Edge compatibility uses exact type equality. Match Text with Text, JSON with JSON, Files with Files, and each other type with its identical counterpart.
+- Edge compatibility uses exact type equality. Match Text with Text, Dataset with Dataset, Images with Images, Videos with Videos, and Audios with Audios. The five types in lib/node.ts dataTypes are the only ones the backend and the editor accept.
 - Edge duplicate detection uses the complete four-field connection tuple, so handle names are part of connection identity.
 - Edge IDs use the exact concatenation formula. Preserve capitalization, underscores, hyphens, and every character in both handle names.
 - Edge removal accepts a workflow UUID and an exact existing edge ID. Read the workflow before removal and use the saved edge record.

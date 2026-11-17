@@ -15,18 +15,15 @@ logger = logging.getLogger(__name__)
 WORKFLOW_DIR = plugin_data_dir("hermes-workflow")
 
 _NODE_NAME_PATTERN = re.compile(r"^[a-zA-Z][a-zA-Z0-9_-]*$")
-_DATA_TYPES = {
-    "Any",
-    "String",
-    "Number",
-    "Boolean",
-    "Object",
-    "Array",
-    "Image",
-    "Audio",
-    "Video",
-    "File",
-}
+# The port and parameter types, mirroring lib/node.ts `dataTypes` exactly so the
+# backend accepts precisely what the studio's editor can produce.
+_DATA_TYPES = (
+    "Text",
+    "Dataset",
+    "Images",
+    "Videos",
+    "Audios",
+)
 
 
 NODE_LIBRARY_PATH = WORKFLOW_DIR / "node-library.json"
