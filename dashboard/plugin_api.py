@@ -1,14 +1,19 @@
 """Workflow Studio backend: workflow/node-library storage plus node execution.
 
-Node Python runs inside the long-lived ``hermes-workflow`` container (see the
-Dockerfile and docker-compose.yml at the plugin root), so node code gets that
-container's Python 3.12 + uv install and never touches this process. Hermes'
-own terminal backend is unaffected: the agent keeps its local interpreter and
-full host filesystem access.
+Each workflow carries a runtime choice, and every node run goes where that
+choice points:
 
-``HERMES_WORKFLOW_RUNNER=local`` restores the previous behaviour, where a node
-runs through Hermes' own ``execute_code`` (tools/code_execution_tool) in a
-separate kernel child process rather than ``exec`` in this process.
+- ``local`` (the studio default) runs the node through Hermes' own
+  ``execute_code`` (tools/code_execution_tool) in a separate kernel child
+  process, using Hermes' interpreter.
+- ``docker`` ships the node script into the long-lived ``hermes-workflow``
+  container (see the Dockerfile and docker-compose.yml at the plugin root) and
+  runs it with that container's Python 3.12 + uv install, so node code gets the
+  container's packages and mounts and never touches this process.
+
+The runner travels with each ``POST /run`` request. A request that omits it
+falls back to ``HERMES_WORKFLOW_RUNNER`` (default ``docker``), which is what
+scripts and API callers outside the studio use.
 
 ``GET /runner`` reports what the docker path resolves to right now.
 """
@@ -27,7 +32,7 @@ import shutil
 import subprocess
 import tempfile
 import time
-from typing import Any
+from typing import Any, Literal
 import uuid
 
 from fastapi import APIRouter, HTTPException
@@ -53,6 +58,8 @@ class RunRequest(BaseModel):
     inputs: dict[str, Any] = Field(default_factory=dict)
     # Declared defaults, already resolved by the renderer (see lib/parameter-values.ts).
     parameters: dict[str, Any] = Field(default_factory=dict)
+    # The workflow's runtime choice. Omitted -> HERMES_WORKFLOW_RUNNER (docker).
+    runner: Literal["local", "docker"] | None = None
 
 
 class SourceRequest(BaseModel):
@@ -446,6 +453,11 @@ DEFAULT_CONTAINER_PYTHON = "python3"
 DEFAULT_CONTAINER_WORKDIR = "/work"
 DEFAULT_NODE_TIMEOUT = 300
 
+# A workflow's stored runtime choice. Mirrors lib/runner.ts; "local" is what the
+# studio selects for a workflow that carries none.
+WORKFLOW_RUNNERS = ("local", "docker")
+DEFAULT_WORKFLOW_RUNNER = "local"
+
 # How long a stopped container gets to reach "running" after `docker start`.
 _START_WAIT_SECONDS = 15
 
@@ -749,9 +761,10 @@ def _run_node(
     inputs: dict[str, Any],
     parameters: dict[str, Any],
     context: dict[str, Any],
+    runner: str | None = None,
 ) -> dict[str, Any]:
-    """Run one node wherever the runner setting points."""
-    if _runner_name() == "docker":
+    """Run one node wherever the request's runner (or the env default) points."""
+    if (runner or _runner_name()) == "docker":
         return _run_node_in_container(code, inputs, parameters, context)
     return _run_node_via_execute_code(code, inputs, parameters, context)
 
@@ -804,7 +817,7 @@ async def run(body: RunRequest):
     try:
         # execute_code is blocking (it drives a child process over a socket).
         result = await asyncio.to_thread(
-            _run_node, body.code, body.inputs, body.parameters, {}
+            _run_node, body.code, body.inputs, body.parameters, {}, body.runner
         )
         return {"node_id": body.node_id, **result}
     except NodeTimeout as exc:
@@ -875,6 +888,19 @@ def _workflow_path(workflow_id: str):
     return WORKFLOW_DIR / f"workflow-{workflow_id}.json"
 
 
+def _workflow_runner(body: dict, fallback: str) -> str:
+    """The runtime to store: the request's choice, else the existing/default one."""
+    value = body.get("runner")
+    if value is None:
+        return fallback
+    if value not in WORKFLOW_RUNNERS:
+        raise HTTPException(
+            status_code=400,
+            detail=f"runner must be one of: {', '.join(WORKFLOW_RUNNERS)}.",
+        )
+    return value
+
+
 # Workflows
 @router.get("/workflows")
 async def read_workflows():
@@ -895,6 +921,7 @@ async def create_workflow(body: dict):
         "name": body.get("name") or f"workflow-{workflow_id}",
         "createdAt": now,
         "updatedAt": now,
+        "runner": _workflow_runner(body, DEFAULT_WORKFLOW_RUNNER),
         "nodes": [],
         "edges": [],
     }
@@ -918,6 +945,9 @@ async def save_workflow(workflow_id: str, body: dict):
                 else workflow.get("name", f"workflow-{workflow_id}")
             ),
             "updatedAt": _now(),
+            # Absent runner keeps the stored one, so a name-only save cannot
+            # silently reset the runtime choice.
+            "runner": _workflow_runner(body, workflow.get("runner") or DEFAULT_WORKFLOW_RUNNER),
             "nodes": body["nodes"],
             "edges": body["edges"],
         }

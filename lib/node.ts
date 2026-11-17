@@ -2,6 +2,7 @@ import z from "zod";
 import { type Node } from "@xyflow/react";
 
 import { hostRest } from "@/lib/host";
+import type { WorkflowRunner } from "@/lib/runner";
 
 export const categories = [
   { value: "data", label: "Data" },
@@ -156,14 +157,16 @@ export interface NodeExecutionResult {
 export async function runNode(
   node: WorkflowNode,
   inputs: Record<string, unknown> = {},
+  runner?: WorkflowRunner,
 ): Promise<Record<string, unknown>> {
   const code = node.data.execution?.pythonCode;
   if (!code?.trim()) {
     throw new Error(`Node "${node.id}" has no valid Execution.`);
   }
 
-  // The backend runs the node in an execute_code kernel child; this returns its
-  // {node_id, status, output} envelope or throws with the child's message.
+  // The backend runs the node where `runner` points — the hermes-workflow
+  // container, or Hermes' own execute_code kernel child when the workflow asks
+  // for "local". Omitting it falls back to HERMES_WORKFLOW_RUNNER.
   // `parameters` carries the node's declared defaults, resolved once here, so
   // build_output receives them instead of an empty dict.
   const result = await hostRest<Record<string, unknown>>("/run", {
@@ -173,6 +176,7 @@ export async function runNode(
       code,
       inputs,
       parameters: node.data,
+      runner,
     },
   });
 

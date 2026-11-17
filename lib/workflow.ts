@@ -1,6 +1,7 @@
 import type { Edge, Node } from "@xyflow/react";
 
 import { hostRest } from "@/lib/host";
+import type { WorkflowRunner } from "@/lib/runner";
 
 export type Workflow = {
   id: string;
@@ -9,6 +10,8 @@ export type Workflow = {
   updatedAt: string;
   nodes: Node[];
   edges: Edge[];
+  /** Where node Python runs; absent on workflows saved before the selector. */
+  runner?: WorkflowRunner;
 };
 
 export type WorkflowSummary = Pick<
@@ -32,6 +35,7 @@ export async function createWorkflow(name?: string): Promise<Workflow> {
 export async function saveWorkflow(
   workflow: Pick<Workflow, "id" | "nodes" | "edges"> & {
     name?: string;
+    runner?: WorkflowRunner;
   },
 ): Promise<Workflow> {
   return hostRest<Workflow>(`/workflows/${workflow.id}`, {
@@ -40,6 +44,7 @@ export async function saveWorkflow(
       name: workflow.name,
       nodes: workflow.nodes,
       edges: workflow.edges,
+      runner: workflow.runner,
     },
   });
 }

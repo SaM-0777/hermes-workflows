@@ -301,15 +301,16 @@ The handler removes the exact matching edge, updates the workflow timestamp, and
 
 ### 9. Check and provision the node runtime
 
-1. Call check_workflow_runtime before a run when the outcome matters. Read status, ready, message, and next_action from the response.
-2. status ready means the container is running and nodes will execute inside it. next_action none means nothing is required.
-3. status docker_unavailable means the Docker daemon is not reachable (or the CLI is missing). next_action is ask_user_to_start_docker. Tell the user to start Docker Desktop and stop there: never start the daemon yourself, and setup_workflow_runtime refuses in this state too.
-4. status image_missing or container_missing means the image or the container has to be created. next_action is request_setup_permission. Ask the user whether they want it built and started.
-5. Only after the user agrees, call setup_workflow_runtime. The pre_tool_call hook intercepts it and returns the approval prompt describing the exact Docker commands; the tool runs only after the user approves.
-6. Read setup_workflow_runtime's response: status ready with success true means the container reached running. A non-zero returncode in steps means the build or start failed; report the captured stderr to the user instead of retrying blindly.
-7. status container_stopped means the container exists but is not running. A workflow run starts it automatically; setup_workflow_runtime can start it immediately if the user prefers.
-8. status local_runner means HERMES_WORKFLOW_RUNNER=local: nodes run in Hermes' own execute_code kernel and no container is involved.
-9. Re-run check_workflow_runtime after setup to confirm, then proceed to request_run_workflow.
+1. Each saved workflow carries a runtime: `local` (the studio default) runs every node through Hermes' own `execute_code` kernel child, `docker` runs it inside the `hermes-workflow` container. The choice is stored on the workflow and sent with each `POST /run`; a request without one falls back to `HERMES_WORKFLOW_RUNNER` (default `docker`). check_workflow_runtime describes the container, which only the `docker` runtime uses.
+2. Call check_workflow_runtime before a docker run when the outcome matters. Read status, ready, message, and next_action from the response.
+3. status ready means the container is running and nodes will execute inside it. next_action none means nothing is required.
+4. status docker_unavailable means the Docker daemon is not reachable (or the CLI is missing). next_action is ask_user_to_start_docker. Tell the user to start Docker Desktop and stop there: never start the daemon yourself, and setup_workflow_runtime refuses in this state too.
+5. status image_missing or container_missing means the image or the container has to be created. next_action is request_setup_permission. Ask the user whether they want it built and started.
+6. Only after the user agrees, call setup_workflow_runtime. The pre_tool_call hook intercepts it and returns the approval prompt describing the exact Docker commands; the tool runs only after the user approves.
+7. Read setup_workflow_runtime's response: status ready with success true means the container reached running. A non-zero returncode in steps means the build or start failed; report the captured stderr to the user instead of retrying blindly.
+8. status container_stopped means the container exists but is not running. A workflow run starts it automatically; setup_workflow_runtime can start it immediately if the user prefers.
+9. status local_runner means HERMES_WORKFLOW_RUNNER=local: nodes run in Hermes' own execute_code kernel and no container is involved.
+10. Re-run check_workflow_runtime after setup to confirm, then proceed to request_run_workflow.
 
 ### 10. Verify execution and persistence
 

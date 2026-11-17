@@ -7,6 +7,7 @@ import {
   type NodeRuntimeState,
   type WorkflowNode,
 } from "@/lib/node";
+import type { WorkflowRunner } from "@/lib/runner";
 
 /**
  * LangGraph's default recursion limit (25) is low for a graph that contains a
@@ -72,6 +73,7 @@ export async function buildFlowGraph(
   edges: Edge[],
   onNodeStateChange?: (nodeId: string, state: NodeRuntimeState) => void,
   onExecutionEvent?: (event: WorkflowExecutionEvent) => void,
+  runner?: WorkflowRunner,
 ) {
   const connectedIds = new Set<string>();
 
@@ -163,7 +165,7 @@ export async function buildFlowGraph(
           inputs,
         });
 
-        const result = await runNode(node, inputs);
+        const result = await runNode(node, inputs, runner);
         const completedAt = Date.now();
 
         onNodeStateChange?.(node.id, {

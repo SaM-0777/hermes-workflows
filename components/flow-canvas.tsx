@@ -32,9 +32,16 @@ import { BaseNode } from "./base-node";
 import { EdgeNameDialog } from "./edge-name-dialog";
 import { Button } from "./ui/button";
 import DeleteWorkflow from "./delete-flow";
+import { RuntimeSelector } from "./runtime-selector";
 import { buildFlowGraph, WORKFLOW_RECURSION_LIMIT } from "@/lib/flow-graph";
 import { getWorkflowId } from "@/lib/host";
 import { saveWorkflow, loadWorkflow } from "@/lib/workflow";
+import {
+  DEFAULT_WORKFLOW_RUNNER,
+  normalizeWorkflowRunner,
+  runnerLabels,
+  type WorkflowRunner,
+} from "@/lib/runner";
 import {
   useNodeRuntimeState,
   WorkflowRuntimeProvider,
@@ -87,6 +94,9 @@ export default function FlowCanvas({ runNonce = 0 }: { runNonce?: number }) {
   const [nodes, setNodes, onNodesChange] = useNodesState<WorkflowNode>([]);
   const [edges, setEdges, onEdgesChange] = useEdgesState<WorkflowEdge>([]);
   const [isRunning, setIsRunning] = useState(false);
+  // Where this workflow's node Python runs. Persisted with the workflow, and the
+  // default for a workflow that has never been saved with one.
+  const [runner, setRunner] = useState<WorkflowRunner>(DEFAULT_WORKFLOW_RUNNER);
   const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
   const [isSaving, setIsSaving] = useState(false);
   const [runtimeState, setRuntimeState] = useState<WorkflowRuntimeState>({});
@@ -191,6 +201,7 @@ export default function FlowCanvas({ runNonce = 0 }: { runNonce?: number }) {
         if (!active) return;
         setNodes(workflow.nodes as WorkflowNode[]);
         setEdges(workflow.edges as WorkflowEdge[]);
+        setRunner(normalizeWorkflowRunner(workflow.runner));
       })
       .catch((error) => {
         if (!active) return;
@@ -222,12 +233,18 @@ export default function FlowCanvas({ runNonce = 0 }: { runNonce?: number }) {
       setRuntimeState(initialRuntimeState);
       setIsRunning(true);
       try {
-        const graph = await buildFlowGraph(nodes, edges, (nodeId, state) => {
-          setRuntimeState((current) => ({
-            ...current,
-            [nodeId]: state,
-          }));
-        });
+        const graph = await buildFlowGraph(
+          nodes,
+          edges,
+          (nodeId, state) => {
+            setRuntimeState((current) => ({
+              ...current,
+              [nodeId]: state,
+            }));
+          },
+          undefined,
+          runner,
+        );
         await graph.invoke(
           { results: {} },
           { recursionLimit: WORKFLOW_RECURSION_LIMIT },
@@ -241,7 +258,7 @@ export default function FlowCanvas({ runNonce = 0 }: { runNonce?: number }) {
         setIsRunning(false);
       }
     },
-    [isRunning],
+    [isRunning, runner],
   );
 
   // A run requested from outside the canvas (host event or the toolbar button).
@@ -255,6 +272,8 @@ export default function FlowCanvas({ runNonce = 0 }: { runNonce?: number }) {
       .then((workflow) => {
         setNodes(workflow.nodes as WorkflowNode[]);
         setEdges(workflow.edges as WorkflowEdge[]);
+        // An agent-requested run honours the runtime saved with the workflow.
+        setRunner(normalizeWorkflowRunner(workflow.runner));
         setPendingApproval(true);
       })
       .catch((error) => {
@@ -282,7 +301,7 @@ export default function FlowCanvas({ runNonce = 0 }: { runNonce?: number }) {
     setIsSaving(true);
 
     try {
-      await saveWorkflow({ id: workflowId, nodes, edges });
+      await saveWorkflow({ id: workflowId, nodes, edges, runner });
       toast.success("Workflow saved successfully");
     } catch (error) {
       const err = error as Error;
@@ -355,15 +374,24 @@ export default function FlowCanvas({ runNonce = 0 }: { runNonce?: number }) {
                 Stop workflow
               </Button>
             ) : (
-              <Button
-                size="sm"
-                disabled={isRunning}
-                onClick={handleRun}
-                className="gap-2 shadow-sm"
-              >
-                <Play className="size-3.5 fill-current" />
-                Run workflow
-              </Button>
+              <div className="flex items-center">
+                <Button
+                  size="sm"
+                  disabled={isRunning}
+                  onClick={handleRun}
+                  className="gap-2 shadow-sm m-0"
+                  title={`Node runtime: ${runnerLabels[runner]}`}
+                >
+                  <Play className="size-3.5 fill-current" />
+                  Run workflow
+                </Button>
+                <RuntimeSelector
+                  value={runner}
+                  onChange={setRunner}
+                  disabled={isRunning}
+                  className="shadow-sm bg-white m-0"
+                />
+              </div>
             )}
             <Button
               size="sm"
