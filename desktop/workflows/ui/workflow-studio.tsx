@@ -12,7 +12,6 @@ import StudioApp from "../../../src/App";
 import { setActiveWorkflowId, setHostRest } from "../../../lib/host";
 import {
   isRecord,
-  isWorkflowDocument,
   type WorkflowDocument,
 } from "../lib/workflow-validation";
 import {
@@ -65,6 +64,7 @@ export function WorkflowStudioPage({ ctx }: WorkflowStudioPageProps) {
       };
     }
 
+    // eslint-disable-next-line react-hooks/set-state-in-effect
     setLoading(true);
 
     void loadWorkflow(ctx.rest, workflowId)
@@ -119,7 +119,7 @@ export function WorkflowStudioPage({ ctx }: WorkflowStudioPageProps) {
         setNameStatus("idle");
       }
     },
-    [ctx.rest, workflowId],
+    [ctx.rest, setNameDraft, setNameStatus, setWorkflow, workflowId],
   );
 
   useEffect(() => {

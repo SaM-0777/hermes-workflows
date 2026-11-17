@@ -1,7 +1,7 @@
-import { useMemo, useState, type ReactNode } from "react";
+import { useMemo, useState, type CSSProperties, type ReactNode } from "react";
 import { Edit, Trash2, type LucideIcon } from "lucide-react";
 import { cva } from "class-variance-authority";
-import { useReactFlow, Handle, type NodeHandle, Position } from "@xyflow/react";
+import { useReactFlow, Handle, Position } from "@xyflow/react";
 import { cn } from "@/lib/utils";
 import {
   Card,
@@ -43,6 +43,16 @@ function summarizeDefault(type: string, value: string): string {
   return value;
 }
 
+/** An extra handle rendered on the card itself (control-flow in/out). */
+export interface NodeExtraHandle {
+  id: string;
+  type: "source" | "target";
+  position?: Position;
+  style?: CSSProperties;
+  className?: string;
+  title?: string;
+}
+
 export interface BaseNodeProps {
   id: string;
   data: NodeData;
@@ -50,7 +60,7 @@ export interface BaseNodeProps {
   status?: NodeStatus;
   selected?: boolean;
   children?: ReactNode;
-  handles?: NodeHandle[];
+  handles?: NodeExtraHandle[];
   className?: string;
   runtimeInputs?: Record<string, unknown>;
   runtimeOutput?: unknown;
@@ -129,12 +139,17 @@ export function BaseNode({
         {handles.map((handle) => (
           <Handle
             key={handle.id}
+            {...handle}
             id={handle.id}
             type={handle.type}
             position={
-              handle.position ?? (handle.type === "target" ? "left" : "right")
+              handle.position ??
+              (handle.type === "target" ? Position.Left : Position.Right)
             }
-            className="size-3 border-2 border-background bg-muted-foreground transition-colors hover:bg-blue-500"
+            className={cn(
+              "size-3 border-2 border-background bg-muted-foreground transition-colors hover:bg-blue-500",
+              handle.className,
+            )}
           />
         ))}
 

@@ -4,7 +4,67 @@ from pathlib import Path
 TOOLSET = "hermes-workflow"
 
 
+def _setup_runtime_approval(tools):
+    """Ask the user before building the image or touching the container."""
+    try:
+        snapshot = json.loads(tools.check_workflow_runtime({}))
+    except Exception as exc:  # noqa: BLE001 - a failed probe must not auto-approve
+        return {
+            "action": "block",
+            "message": f"Cannot inspect the workflow runtime before setup: {exc}",
+        }
+
+    status = snapshot.get("status")
+    image = snapshot.get("image", {}).get("name", "hermes-workflow:latest")
+    container = snapshot.get("container", {}).get("name", "hermes-workflow")
+
+    if status == "docker_unavailable":
+        return {
+            "action": "block",
+            "message": (
+                "Workflow nodes run inside Docker, but the Docker daemon is not "
+                "running. Nothing can be built or started until the user starts "
+                "Docker Desktop, so no approval is requested yet."
+            ),
+        }
+
+    plans = {
+        "image_missing": (
+            f"Build the image '{image}' from the plugin Dockerfile and start the "
+            f"container '{container}'."
+        ),
+        "container_missing": (
+            f"Create and start the container '{container}' from the existing "
+            f"image '{image}'."
+        ),
+        "container_stopped": (
+            f"Start the stopped container '{container}' (image '{image}')."
+        ),
+        "ready": (
+            f"Nothing to build: container '{container}' is already running with "
+            f"image '{image}'. Approving only re-checks it."
+        ),
+    }
+    plan = plans.get(status, f"Prepare the node runtime (status: {status}).")
+
+    return {
+        "action": "approve",
+        "message": (
+            "Workflow node setup will run Docker commands on this machine:\n\n"
+            f"  {plan}\n\n"
+            f"  image:     {image}\n"
+            f"  container: {container}\n"
+            f"  compose:   docker compose -f docker-compose.yml up -d"
+            f"{' --build' if status == 'image_missing' else ''}\n\n"
+            "Workflow node Python will then execute inside that container instead "
+            "of Hermes' own interpreter."
+        ),
+    }
+
+
 def require_workflow_approval(tool_name, args, tools):
+    if tool_name == "setup_workflow_runtime":
+        return _setup_runtime_approval(tools)
     if tool_name != "request_run_workflow":
         return None
     try:
@@ -76,6 +136,8 @@ def register(ctx) -> None:
         (s.ADD_WORKFLOW_EDGE, t.add_workflow_edge),
         (s.REMOVE_WORKFLOW_EDGE, t.remove_workflow_edge),
         (s.REQUEST_RUN_WORKFLOW, t.request_run_workflow),
+        (s.CHECK_WORKFLOW_RUNTIME, t.check_workflow_runtime),
+        (s.SETUP_WORKFLOW_RUNTIME, t.setup_workflow_runtime),
     )
     for schema, handler in tools:
         ctx.register_tool(
