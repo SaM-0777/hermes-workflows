@@ -61,7 +61,7 @@ Use the exact registered tool names and schema field names below. Tool responses
 | Workflow nodes | update_workflow_node         | workflow_id, node_id, plus one or more of general, io, config, execution; updates supplied sections and preserves the others.                             |
 | Workflow nodes | delete_workflow_node         | workflow_id and node_id; removes the node and all edges attached to it.                                                                                   |
 | Workflow nodes | duplicate_workflow_node      | workflow_id and node_id; copies node data into a new node with a generated ID and offset position.                                                        |
-| Edges          | add_workflow_edge            | workflow_id, source_node_id, source_handle, target_node_id, target_handle; validates ports, exact type equality, and duplicate connections before saving. |
+| Edges          | add_workflow_edge            | workflow_id, source_node_id, source_handle, target_node_id, target_handle, optional kind and label; data edges validate ports and exact type equality, control edges use flow → then and carry no value. |
 | Edges          | remove_workflow_edge         | workflow_id and exact edge_id; removes the matching edge and returns the removed edge.                                                                    |
 | Execution      | request_run_workflow        | { "workflow_id": "<workflow-uuid>" }; requests user approval before Workflow execution.                                                          |
 | Runtime        | check_workflow_runtime      | {} ; returns docker (binary, running, server_version), image (name, present), container (name, state), status, ready, message, and next_action. Starts nothing. |
@@ -213,12 +213,14 @@ The saved edge has this structure:
 {
   "id": "xy-edge__<source_node_id><source_handle>-<target_node_id><target_handle>",
   "type": "smoothstep",
+  "kind": "data",
   "animated": true,
   "style": {"stroke": "#64748b", "strokeWidth": 2},
   "source": "<source_node_id>",
   "sourceHandle": "<source_handle>",
   "target": "<target_node_id>",
-  "targetHandle": "<target_handle>"
+  "targetHandle": "<target_handle>",
+  "label": "<optional name shown on the canvas>"
 }
 ```
 
@@ -233,7 +235,48 @@ edge_id = (
 
 The formula places the source node ID immediately before the source handle, places a single hyphen between the source side and target side, and places the target node ID immediately before the target handle. A connection from nodeA output x to nodeB input a produces xy-edge\_\_nodeAx-nodeBa.
 
-### 6. Remove an exact edge
+### 6. Connect control flow (no data)
+
+Use a control edge when the connection only orders execution: a node with no outputs, or one whose
+result is not an object, still needs to say what runs next.
+
+1. Every node has two reserved handles that are not ports: flow (output side) and then (input side).
+   No data port may be named flow or then; create_node, update_node, add_node_to_workflow and
+   update_workflow_node reject those names.
+2. Call add_workflow_edge with source_handle "flow" and target_handle "then". kind is inferred as
+   control from that pair; passing kind "control" explicitly is equivalent.
+3. flow and then are not interchangeable with port handles: flow to a port, a port to then, and
+   flow to flow are all rejected. A control edge always runs flow → then.
+4. Control edges carry no value. The target executes with only the inputs it receives from data
+   edges, so a node fed solely by control edges runs with an empty inputs dictionary.
+5. A control edge may target a node that also has data inputs. Ordering and data binding combine.
+6. Fan-in waits for every parent: a node with three control parents runs after all three finish.
+7. Loops are allowed: a control edge may close a cycle back to an earlier node. The run stops at the
+   graph recursion limit (100) rather than looping forever, and today the cycle is traversed once per
+   pass because the graph has no branch condition to decide about repeating.
+8. Verify with get_workflow_by_id: the edge has kind "control", sourceHandle "flow", targetHandle
+   "then", the same stroke colour as a data edge, a dashed path, and animated false.
+9. Optional: pass label (max 80 characters) on any edge, control or data, to name it on the canvas.
+   Labels are display text; they do not affect execution.
+
+The saved control edge has this structure:
+
+```
+{
+  "id": "xy-edge__<source_node_id>flow-<target_node_id>then",
+  "type": "smoothstep",
+  "kind": "control",
+  "animated": false,
+  "style": {"stroke": "#64748b", "strokeWidth": 2, "strokeDasharray": "6 4"},
+  "source": "<source_node_id>",
+  "sourceHandle": "flow",
+  "target": "<target_node_id>",
+  "targetHandle": "then",
+  "label": "<optional name>"
+}
+```
+
+### 7. Remove an exact edge
 
 1. Call get_workflow_by_id with the workflow UUID.
 2. Inspect workflow.edges and select the edge whose four connection fields match the intended source node, source handle, target node, and target handle.
@@ -243,7 +286,7 @@ The formula places the source node ID immediately before the source handle, plac
 
 The handler removes the exact matching edge, updates the workflow timestamp, and preserves every node and every other edge.
 
-### 7. Request approval to run a saved workflow
+### 8. Request approval to run a saved workflow
 
 1. Call get_workflow_by_id with the workflow UUID and inspect its nodes and edges.
 2. Confirm the workflow contains a connected execution graph. The Workflow Studio runtime selects nodes referenced by edges and adds start and end boundaries around the connected graph.
@@ -257,7 +300,7 @@ The handler removes the exact matching edge, updates the workflow timestamp, and
 10. Observe per-node runtime states: ready, running, success, or error. Inspect node inputs, outputs, and error details in the Workflow Studio canvas.
 11. Use get_workflow_by_id to confirm the requested workflow ID and topology. Use user approval plus canvas runtime states and node outputs as execution evidence.
 
-### 8. Check and provision the node runtime
+### 9. Check and provision the node runtime
 
 1. Call check_workflow_runtime before a run when the outcome matters. Read status, ready, message, and next_action from the response.
 2. status ready means the container is running and nodes will execute inside it. next_action none means nothing is required.
@@ -269,7 +312,7 @@ The handler removes the exact matching edge, updates the workflow timestamp, and
 8. status local_runner means HERMES_WORKFLOW_RUNNER=local: nodes run in Hermes' own execute_code kernel and no container is involved.
 9. Re-run check_workflow_runtime after setup to confirm, then proceed to request_run_workflow.
 
-### 9. Verify execution and persistence
+### 10. Verify execution and persistence
 
 1. Validate Python syntax in the Workflow Studio Execution editor with Validate Code.
 2. Confirm the editor extracts a literal Execution.name, description, category, inputs, outputs, and parameters definition.
@@ -307,6 +350,12 @@ The handler removes the exact matching edge, updates the workflow timestamp, and
 - Upstream outputs use the sourceHandle key and feed the targetHandle key. Each upstream node returns an object-shaped output for downstream handle lookup.
 - Deleting a workflow node also removes its connected edges. Duplicating a node creates data and a new ID, then requires explicit reconnection.
 - Tool handlers persist JSON workflow and node-library data through the plugin storage layer. Use the tools as the write interface and verify through read-back.
+- flow and then are reserved handle names on every node, added by the canvas for control edges. A data port may not use them, and add_workflow_edge rejects mixing a control handle with a port handle.
+- A control edge passes no payload. Downstream inputs come only from data edges, so a node reached only by flow/then runs with an empty inputs dictionary.
+- Control edges are identified by kind "control"; when kind is omitted the tool infers it from the flow/then pair. A data edge that happens to name its port then is rejected, not reinterpreted.
+- Cycles are allowed in the graph and execute one pass per run; the graph has no branch condition yet, so a loop does not repeat and the recursion limit (100) is what bounds a runaway graph.
+- Edge labels are display text of at most 80 characters, stored as edge.label on both kinds. They never change routing or ordering.
+
 - check_workflow_runtime never starts anything: no daemon, image, or container. It reports state and the next action, so a missing Docker daemon stays the user's decision.
 - A stopped Docker daemon is the user's action to take. Inform the user and stop; neither tool starts Docker Desktop, and setup_workflow_runtime returns docker_unavailable rather than guessing.
 - setup_workflow_runtime is approval-gated by the plugin's pre_tool_call hook. The hook blocks it while the daemon is down and otherwise returns the approval prompt describing the exact Docker commands; the handler runs only after the user approves.
@@ -328,6 +377,7 @@ Verification is complete when the operation's response and a subsequent read agr
 | Duplicate workflow node       | The returned new node ID appears once with copied data and the expected offset position.                                           |
 | Add workflow edge             | The returned edge and read-back edge share the expected ID, source, source handle, target, target handle, and matching port types. |
 | Remove workflow edge          | The read-back workflow contains no edge with the removed ID, while all unrelated edges remain present.                             |
+| Add control edge              | get_workflow_by_id returns an edge with kind "control", sourceHandle "flow", targetHandle "then", and the dashed style; a run then executes the target after the source with no added inputs. |
 | Request and run workflow     | request_run_workflow returns success with the approval-request broadcast, the user reviews the workflow and code, selects Approve and run, and connected nodes reach success with visible outputs. |
 | Delete workflow node          | The read-back workflow contains neither the node nor any edge referencing its ID.                                                  |
 | Execute node                  | Python validation succeeds, build_output returns a value, and the runtime result reports status: "completed".                      |

@@ -31,6 +31,22 @@ _DATA_TYPES = {
 
 NODE_LIBRARY_PATH = WORKFLOW_DIR / "node-library.json"
 
+# Control-flow edges: no payload, only ordering. The handle names are reserved on
+# every node (rendered by the canvas as the amber "flow"/"then" dots), so a data
+# port may never take one of them.
+CONTROL_OUT_HANDLE = "flow"
+CONTROL_IN_HANDLE = "then"
+CONTROL_HANDLE_NAMES = frozenset({CONTROL_OUT_HANDLE, CONTROL_IN_HANDLE})
+CONTROL_EDGE_KIND = "control"
+DATA_EDGE_KIND = "data"
+CONTROL_EDGE_STYLE = {
+    "stroke": "#64748b",
+    "strokeWidth": 2,
+    "strokeDasharray": "6 4",
+}
+DATA_EDGE_STYLE = {"stroke": "#64748b", "strokeWidth": 2}
+EDGE_LABEL_MAX_LENGTH = 80
+
 def _now():
     return (
         datetime.now(timezone.utc)
@@ -128,6 +144,11 @@ def _validate_node_io_data(io):
                     f"Node io.{direction}[{index}].name must start "
                     "with a letter and contain only letters, numbers, "
                     "underscores, or hyphens."
+                )
+            if name.lower() in CONTROL_HANDLE_NAMES:
+                raise ValueError(
+                    f"Node io.{direction}[{index}].name '{name}' is reserved for "
+                    "control-flow edges. Use a different port name."
                 )
             port_type = port.get("type")
             if not isinstance(port_type, str) or port_type not in _DATA_TYPES:
@@ -843,6 +864,45 @@ def add_workflow_edge(params, **kwargs):
             raise ValueError("Target handle is required.")
         if source_node_id == target_node_id:
             raise ValueError("Source and target nodes cannot be the same.")
+        kind = params.get("kind")
+        if kind is None:
+            kind = (
+                CONTROL_EDGE_KIND
+                if source_handle == CONTROL_OUT_HANDLE
+                and target_handle == CONTROL_IN_HANDLE
+                else DATA_EDGE_KIND
+            )
+        if not isinstance(kind, str) or kind not in (
+            DATA_EDGE_KIND,
+            CONTROL_EDGE_KIND,
+        ):
+            raise ValueError("Edge kind must be 'data' or 'control'.")
+
+        label = params.get("label")
+        if label is not None:
+            if not isinstance(label, str):
+                raise ValueError("Edge label must be a string.")
+            label = label.strip()[:EDGE_LABEL_MAX_LENGTH]
+
+        if kind == CONTROL_EDGE_KIND:
+            if (
+                source_handle != CONTROL_OUT_HANDLE
+                or target_handle != CONTROL_IN_HANDLE
+            ):
+                raise ValueError(
+                    "A control edge connects the source's "
+                    f"'{CONTROL_OUT_HANDLE}' handle to the target's "
+                    f"'{CONTROL_IN_HANDLE}' handle."
+                )
+        elif (
+            source_handle in CONTROL_HANDLE_NAMES
+            or target_handle in CONTROL_HANDLE_NAMES
+        ):
+            raise ValueError(
+                f"'{CONTROL_OUT_HANDLE}' and '{CONTROL_IN_HANDLE}' are reserved "
+                "for control edges; pass kind='control' to use them."
+            )
+
         workflow = _read_workflow(workflow_id)
         source_node = next(
             (
@@ -854,24 +914,6 @@ def add_workflow_edge(params, **kwargs):
         )
         if source_node is None:
             raise ValueError(f"Source node not found: {source_node_id}")
-        source_io = source_node.get("data", {}).get("io", {})
-        source_outputs = source_io.get("outputs", [])
-        if not isinstance(source_outputs, list):
-            raise ValueError("Source node has invalid output definitions.")
-        source_port = next(
-            (
-                port
-                for port in source_outputs
-                if isinstance(port, dict) and port.get("name") == source_handle
-            ),
-            None,
-        )
-        if source_port is None:
-            raise ValueError(
-                f"Source handle '{source_handle}' does not exist "
-                f"on source node '{source_node_id}'."
-            )
-        source_type = source_port.get("type")
         target_node = next(
             (
                 node
@@ -882,30 +924,55 @@ def add_workflow_edge(params, **kwargs):
         )
         if target_node is None:
             raise ValueError(f"Target node not found: {target_node_id}")
-        target_io = target_node.get("data", {}).get("io", {})
-        target_inputs = target_io.get("inputs", [])
-        if not isinstance(target_inputs, list):
-            raise ValueError("Target node has invalid input definitions.")
-        target_port = next(
-            (
-                port
-                for port in target_inputs
-                if isinstance(port, dict) and port.get("name") == target_handle
-            ),
-            None,
-        )
-        if target_port is None:
-            raise ValueError(
-                f"Target handle '{target_handle}' does not exist "
-                f"on target node '{target_node_id}'."
+
+        if kind == CONTROL_EDGE_KIND:
+            # No ports are involved: the edge only orders the target after the
+            # source, which is how a node without outputs still chains.
+            source_type = target_type = CONTROL_EDGE_KIND
+        else:
+            source_io = source_node.get("data", {}).get("io", {})
+            source_outputs = source_io.get("outputs", [])
+            if not isinstance(source_outputs, list):
+                raise ValueError("Source node has invalid output definitions.")
+            source_port = next(
+                (
+                    port
+                    for port in source_outputs
+                    if isinstance(port, dict) and port.get("name") == source_handle
+                ),
+                None,
             )
-        target_type = target_port.get("type")
-        if source_type != target_type:
-            raise ValueError(
-                f"Port type mismatch: source handle '{source_handle}' "
-                f"has type '{source_type}', but target handle "
-                f"'{target_handle}' has type '{target_type}'."
+            if source_port is None:
+                raise ValueError(
+                    f"Source handle '{source_handle}' does not exist "
+                    f"on source node '{source_node_id}'."
+                )
+            source_type = source_port.get("type")
+            target_io = target_node.get("data", {}).get("io", {})
+            target_inputs = target_io.get("inputs", [])
+            if not isinstance(target_inputs, list):
+                raise ValueError("Target node has invalid input definitions.")
+            target_port = next(
+                (
+                    port
+                    for port in target_inputs
+                    if isinstance(port, dict) and port.get("name") == target_handle
+                ),
+                None,
             )
+            if target_port is None:
+                raise ValueError(
+                    f"Target handle '{target_handle}' does not exist "
+                    f"on target node '{target_node_id}'."
+                )
+            target_type = target_port.get("type")
+            if source_type != target_type:
+                raise ValueError(
+                    f"Port type mismatch: source handle '{source_handle}' "
+                    f"has type '{source_type}', but target handle "
+                    f"'{target_handle}' has type '{target_type}'."
+                )
+
         for edge in workflow["edges"]:
             if not isinstance(edge, dict):
                 continue
@@ -923,26 +990,35 @@ def add_workflow_edge(params, **kwargs):
         edge = {
             "id": edge_id,
             "type": "smoothstep",
-            "animated": True,
-            "style": {
-                "stroke": "#64748b",
-                "strokeWidth": 2,
-            },
+            "kind": kind,
+            "animated": kind == DATA_EDGE_KIND,
+            "style": (
+                dict(CONTROL_EDGE_STYLE)
+                if kind == CONTROL_EDGE_KIND
+                else dict(DATA_EDGE_STYLE)
+            ),
             "source": source_node_id,
             "sourceHandle": source_handle,
             "target": target_node_id,
             "targetHandle": target_handle,
         }
+        if label:
+            edge["label"] = label
         workflow["edges"].append(edge)
         workflow["updatedAt"] = _now()
         _write_workflow(workflow)
         return _result(
             {
                 "success": True,
-                "message": "Workflow edge created successfully.",
+                "message": (
+                    "Control edge created successfully."
+                    if kind == CONTROL_EDGE_KIND
+                    else "Workflow edge created successfully."
+                ),
                 "workflow_id": workflow_id,
                 "edge": edge,
                 "connection": {
+                    "kind": kind,
                     "source_type": source_type,
                     "target_type": target_type,
                 },

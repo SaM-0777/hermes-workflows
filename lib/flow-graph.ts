@@ -1,11 +1,18 @@
 import { Annotation, END, START, StateGraph } from "@langchain/langgraph";
 import type { Edge } from "@xyflow/react";
+import { isControlEdge } from "@/lib/control-flow";
 import {
   isRecord,
   runNode,
   type NodeRuntimeState,
   type WorkflowNode,
 } from "@/lib/node";
+
+/**
+ * LangGraph's default recursion limit (25) is low for a graph that contains a
+ * control-flow loop. Nodes that legitimately retry need more headroom.
+ */
+export const WORKFLOW_RECURSION_LIMIT = 100;
 
 export type WorkflowExecutionEvent =
   | {
@@ -104,6 +111,9 @@ export async function buildFlowGraph(
         // parents instead of failing with "output is unavailable".
         const pendingParents = incomingEdges.filter((edge) => {
           const result = state.results[edge.source];
+          // A control parent only has to have finished; it passes no value, so
+          // a node without outputs can still order its successor.
+          if (isControlEdge(edge)) return !isRecord(result);
           if (!isRecord(result) || !isRecord(result.output)) return true;
           return (
             !edge.sourceHandle || !(edge.sourceHandle in result.output)
@@ -114,6 +124,9 @@ export async function buildFlowGraph(
         }
 
         for (const edge of incomingEdges) {
+          // flow -> then: ordering only, nothing to bind.
+          if (isControlEdge(edge)) continue;
+
           const sourceHandle = edge.sourceHandle;
           const targetHandle = edge.targetHandle;
           if (!sourceHandle || !targetHandle) {

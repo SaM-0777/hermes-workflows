@@ -48,6 +48,11 @@ services:
       - uv-cache:/opt/uv-cache
       # Read-only view of the plugin's stored workflows/nodes.
       - ${HERMES_WORKFLOW_DATA:-~/.hermes/plugin-data/hermes-workflow}:/data:ro
+      # The host home directory at the same absolute path, so the paths the
+      # studio stores for image/video parameters (and the paths nodes return)
+      # resolve identically inside the container. Writable because annotated
+      # results have to be readable by the studio on the host again.
+      - ${HOME:-/Users/sam}:${HOME:-/Users/sam}:rw
     security_opt:
       - no-new-privileges:true
     stop_grace_period: 5s

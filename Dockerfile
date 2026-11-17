@@ -19,8 +19,17 @@ ENV PYTHONUNBUFFERED=1 \
     PATH=/opt/venv/bin:$PATH \
     PIP_DISABLE_PIP_VERSION_CHECK=1
 
+# libgl1 + libglib2.0-0 + libxcb1 are the native libraries opencv-python links
+# against at import time (cv2), which ultralytics imports; without them cv2 fails
+# with "ImportError: libxcb.so.1: cannot open shared object file".
 RUN apt-get update \
-    && apt-get install -y --no-install-recommends ca-certificates curl git \
+    && apt-get install -y --no-install-recommends \
+        ca-certificates \
+        curl \
+        git \
+        libgl1 \
+        libglib2.0-0 \
+        libxcb1 \
     && rm -rf /var/lib/apt/lists/*
 
 WORKDIR /work
