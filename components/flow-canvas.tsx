@@ -53,6 +53,7 @@ import {
 } from "@/providers/workflow-provider";
 import { toast } from "sonner";
 import { WorkflowApprovalDialog } from "./approval-dialog";
+import { normalizeEdges } from "@/lib/edge";
 
 function WorkflowBaseNode({ id, data, selected }: NodeProps<WorkflowNode>) {
   const runtime = useNodeRuntimeState(id);
@@ -167,7 +168,7 @@ export default function FlowCanvas({ runNonce = 0 }: { runNonce?: number }) {
           {
             ...connection,
             kind: control ? CONTROL_EDGE_KIND : "data",
-            animated: !control,
+            animated: false,
             style: edgeStyleFor(control ? CONTROL_EDGE_KIND : "data"),
           },
           currentEdges,
@@ -212,7 +213,22 @@ export default function FlowCanvas({ runNonce = 0 }: { runNonce?: number }) {
     };
   }, []);
 
-  // The page hands the workflow id down; load it once, straight from the backend.
+  // The page hands the workflow id down; load it from the backend.
+  useEffect(() => {
+    let active = true;
+    void loadProviders()
+      .then((list) => {
+        if (active) setProviders(list);
+      })
+      .catch((error) => {
+        console.error("Could not load runtimes:", error);
+      });
+    return () => {
+      active = false;
+    };
+  }, []);
+
+  // The page hands the workflow id down; load it from the backend.
   useEffect(() => {
     const id = getWorkflowId();
     if (!id) return;
@@ -225,7 +241,7 @@ export default function FlowCanvas({ runNonce = 0 }: { runNonce?: number }) {
       .then((workflow) => {
         if (!active) return;
         setNodes(workflow.nodes as WorkflowNode[]);
-        setEdges(workflow.edges as WorkflowEdge[]);
+        setEdges(normalizeEdges(workflow.edges as WorkflowEdge[]));
         setRunner(normalizeWorkflowRunner(workflow.runner));
         setRunnerOptions(workflow.runnerOptions ?? {});
       })
@@ -298,7 +314,7 @@ export default function FlowCanvas({ runNonce = 0 }: { runNonce?: number }) {
     void loadWorkflow(id)
       .then((workflow) => {
         setNodes(workflow.nodes as WorkflowNode[]);
-        setEdges(workflow.edges as WorkflowEdge[]);
+        setEdges(normalizeEdges(workflow.edges as WorkflowEdge[]));
         // An agent-requested run honours the runtime saved with the workflow.
         setRunner(normalizeWorkflowRunner(workflow.runner));
         setPendingApproval(true);
@@ -374,15 +390,13 @@ export default function FlowCanvas({ runNonce = 0 }: { runNonce?: number }) {
           onEdgeDoubleClick={(_, edge) => setRenamingEdge(edge as WorkflowEdge)}
           deleteKeyCode={["Backspace", "Delete"]}
           edgesFocusable
+          elementsSelectable
           onConnect={onConnect}
           isValidConnection={isValidConnection}
           defaultEdgeOptions={{
             type: "smoothstep",
-            animated: true,
-            style: {
-              stroke: "#64748b",
-              strokeWidth: 2,
-            },
+            animated: false,
+            style: edgeStyleFor("data"),
           }}
           fitView
           fitViewOptions={{ padding: 0.3 }}
@@ -461,11 +475,7 @@ export default function FlowCanvas({ runNonce = 0 }: { runNonce?: number }) {
             >
               <Save className="size-3.5" />
             </Button>
-            <Button
-              size="sm"
-              onClick={handleDelete}
-              className="gap-2 "
-            >
+            <Button size="sm" onClick={handleDelete} className="gap-2 ">
               <Trash2 className="size-3.5 stroke-destructive" />
             </Button>
           </Panel>
@@ -477,9 +487,7 @@ export default function FlowCanvas({ runNonce = 0 }: { runNonce?: number }) {
           key={renamingEdge?.id ?? "no-edge"}
           open={renamingEdge !== null}
           initial={renamingEdge?.label ?? ""}
-          kind={
-            renamingEdge?.kind === CONTROL_EDGE_KIND ? "control" : "data"
-          }
+          kind={renamingEdge?.kind === CONTROL_EDGE_KIND ? "control" : "data"}
           onOpenChange={(open) => {
             if (!open) setRenamingEdge(null);
           }}

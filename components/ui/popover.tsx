@@ -1,7 +1,7 @@
 import * as React from "react"
 import { Popover as PopoverPrimitive } from "@base-ui/react/popover"
 import { cn } from "cn"
-import { useStudioPortalContainer } from "@/lib/studio-portal"
+import { useStudioPortalContainer } from "@/providers/studio-portal-provider"
 
 function Popover({ ...props }: PopoverPrimitive.Root.Props) {
   return <PopoverPrimitive.Root data-slot="popover" {...props} />

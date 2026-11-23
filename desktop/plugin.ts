@@ -1,7 +1,7 @@
 import { ROUTES_AREA, SIDEBAR_NAV_AREA } from "@hermes/plugin-sdk";
 import { jsx } from "react/jsx-runtime";
 import { setHostRest } from "../lib/host";
-import { StudioScope } from "../lib/studio-scope";
+import { StudioScope } from "../components/studio-scope";
 import { WorkflowLibraryPage } from "./workflows/ui/workflow-library";
 import { WorkflowStudioPage } from "./workflows/ui/workflow-studio";
 

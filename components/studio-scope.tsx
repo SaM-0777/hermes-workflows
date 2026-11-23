@@ -20,7 +20,7 @@
 import { useEffect, useRef, useState, type ReactNode } from "react";
 
 import { installStudioStyles } from "@/desktop/studio-styles";
-import { StudioPortalProvider } from "./studio-portal";
+import { StudioPortalProvider } from "../providers/studio-portal-provider";
 
 export function StudioScope({ children }: { children: ReactNode }) {
   const scopeRef = useRef<HTMLDivElement>(null);
