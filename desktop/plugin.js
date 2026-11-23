@@ -1467,7 +1467,7 @@ function getWorkflowId() {
   return activeWorkflowId;
 }
 
-// lib/studio-scope.tsx
+// components/studio-scope.tsx
 import { useEffect, useRef, useState } from "react";
 
 // desktop/studio-styles.ts
@@ -1507,7 +1507,7 @@ function installStudioStyles() {
   };
 }
 
-// lib/studio-portal.tsx
+// providers/studio-portal-provider.tsx
 import { createContext, useContext } from "react";
 import { jsx } from "react/jsx-runtime";
 var StudioPortalContext = createContext(null);
@@ -1524,7 +1524,7 @@ function StudioPortalProvider({
   });
 }
 
-// lib/studio-scope.tsx
+// components/studio-scope.tsx
 import { jsx as jsx2 } from "react/jsx-runtime";
 function StudioScope({ children }) {
   const scopeRef = useRef(null);
