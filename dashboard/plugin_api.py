@@ -29,6 +29,7 @@ from pathlib import Path
 import re
 import shlex
 import shutil
+import signal
 import subprocess
 import sys
 import tempfile
@@ -37,6 +38,7 @@ from typing import Any, Literal
 import uuid
 
 from fastapi import APIRouter, HTTPException
+from fastapi.responses import JSONResponse
 from pydantic import BaseModel, Field
 
 from plugins.plugin_storage import plugin_data_dir
@@ -52,6 +54,25 @@ WORKFLOW_DIR.mkdir(parents=True, exist_ok=True)
 
 NODE_LIBRARY_PATH = WORKFLOW_DIR / "node-library.json"
 
+# --- runtime providers ----------------------------------------------------
+#
+# Every runtime lives behind runners/: descriptors in providers.json, one adapter
+# per provider, and a driver when the provider runs code somewhere else. This
+# module only resolves the choice and routes the work, so adding a provider is a
+# descriptor plus an adapter, not a change here.
+PLUGIN_ROOT = Path(__file__).resolve().parents[1]
+RUNS_DIR = WORKFLOW_DIR / "runs"
+RUNS_DIR.mkdir(parents=True, exist_ok=True)
+
+_RUNNERS_DIR = PLUGIN_ROOT / "runners"
+if str(_RUNNERS_DIR) not in sys.path:
+    sys.path.insert(0, str(_RUNNERS_DIR))
+
+import runner_base  # noqa: E402
+import modal_provider as modal_runtime  # noqa: E402
+
+_PROVIDERS = runner_base.load_providers(PLUGIN_ROOT, WORKFLOW_DIR / "providers.json")
+
 
 class RunRequest(BaseModel):
     node_id: str
@@ -59,8 +80,12 @@ class RunRequest(BaseModel):
     inputs: dict[str, Any] = Field(default_factory=dict)
     # Declared defaults, already resolved by the renderer (see lib/parameter-values.ts).
     parameters: dict[str, Any] = Field(default_factory=dict)
-    # The workflow's runtime choice. Omitted -> HERMES_WORKFLOW_RUNNER (docker).
-    runner: Literal["local", "docker"] | None = None
+    # The workflow's runtime choice; validated against providers.json.
+    runner: str | None = None
+    # Per-workflow overrides for the provider's descriptor options.
+    runner_options: dict[str, Any] | None = None
+    # Known when the studio sends it; used to group runs of one workflow.
+    workflow_id: str | None = None
 
 
 class SourceRequest(BaseModel):
@@ -235,82 +260,8 @@ _RESULT_MARKER = "@@workflow-node@@"
 # collide; only imports (sys.modules) are shared, which is the point of reuse.
 _KERNEL_TASK_ID = "hermes-workflow"
 
-# The driver runs INSIDE the sandboxed child. It exec's the node's source there —
-# never in this process — then reports one JSON line the caller can parse.
-_NODE_DRIVER = r'''
-import asyncio as __asyncio
-import dataclasses as __dc
-import inspect as __inspect
-import json as __json
-import math as __math
-
-
-def __encode(value):
-    """JSON-safe view of whatever build_output returns."""
-    if value is None or isinstance(value, (bool, int)):
-        return value
-    if isinstance(value, float):
-        # NaN/Infinity are not JSON: ship them as text rather than emit a body
-        # no strict JSON parser (or the HTTP layer) will accept.
-        return value if __math.isfinite(value) else str(value)
-    if isinstance(value, str):
-        return value
-    if isinstance(value, (list, tuple, set)):
-        return [__encode(item) for item in value]
-    if isinstance(value, dict):
-        return {str(key): __encode(item) for key, item in value.items()}
-    if __dc.is_dataclass(value) and not isinstance(value, type):
-        return __encode(__dc.asdict(value))
-    for __name in ("model_dump", "dict"):
-        __method = getattr(value, __name, None)
-        if callable(__method):
-            try:
-                return __encode(__method())
-            except Exception:
-                pass
-    if hasattr(value, "__dict__"):
-        return __encode({k: v for k, v in vars(value).items() if not k.startswith("_")})
-    return repr(value)
-
-
-__namespace = {"__name__": "__workflow_node__"}
-__payload = __json.loads(__PAYLOAD__)
-
-
-def __emit(result):
-    """Hand the result back out of band.
-
-    stdout is capped (execute_code keeps 50 KB, head + tail, with a truncation
-    notice spliced into the middle), so a node returning more than that had its
-    own JSON line cut in half. The result goes to the file the caller names; the
-    marker line on stdout stays a constant size.
-    """
-    __text = __json.dumps(result)
-    __path = __payload.get("result_path") or ""
-    if __path:
-        with open(__path, "w", encoding="utf-8") as __handle:
-            __handle.write(__text)
-        print("__MARKER__" + "written")
-    else:
-        print("__MARKER__" + __text)
-
-
-exec(compile(__payload["source"], "<workflow-node>", "exec"), __namespace)
-
-__execution_class = __namespace.get("Execution")
-if not isinstance(__execution_class, type):
-    __emit({"ok": False,
-        "type": "validation_error",
-        "message": "Python source must define an Execution class.",
-    })
-else:
-    __output = __execution_class().build_output(
-        __payload["inputs"], __payload["parameters"], __payload["context"]
-    )
-    if __inspect.isawaitable(__output):
-        __output = __asyncio.run(__output)
-    __emit({"ok": True, "output": __encode(__output)})
-'''
+# The node driver template lives in runner_base so a remote adapter can wrap
+# the node source with the same execution contract after rewriting paths.
 
 
 def _validate_source(code: str) -> None:
@@ -341,28 +292,12 @@ def _node_script(
 ) -> str:
     """The cell handed to execute_code: driver + everything else as data.
 
-    The payload is embedded as a JSON *string* and parsed in the child
-    (`json.loads`), never pasted in as an object literal: `json.dumps` writes
-    `null`/`true`/`false`, which are not Python literals, so a node input of
-    ``None`` used to raise `NameError: name 'null' is not defined` in the cell.
-
-    ``result_path`` is where the child writes its result; see ``_emit`` in the
-    driver for why it does not go over stdout.
+    ``result_path`` is where the child writes its result; see ``__emit`` in
+    runner_base.NODE_DRIVER for why it does not go over stdout by default. The
+    same template is what a remote adapter wraps the node source with, so every
+    runtime runs against one execution contract.
     """
-    payload = json.dumps(
-        {
-            "source": code,
-            "inputs": inputs,
-            "parameters": parameters,
-            "context": context,
-            "result_path": result_path,
-        },
-        ensure_ascii=True,
-    )
-    return (
-        _NODE_DRIVER.replace("__MARKER__", _RESULT_MARKER)
-        .replace("__PAYLOAD__", json.dumps(payload, ensure_ascii=True))
-    )
+    return runner_base.node_script(code, inputs, parameters, context, result_path)
 
 
 def _parse_result(raw: str, result_path: str) -> dict[str, Any]:
@@ -454,9 +389,9 @@ DEFAULT_CONTAINER_PYTHON = "python3"
 DEFAULT_CONTAINER_WORKDIR = "/work"
 DEFAULT_NODE_TIMEOUT = 300
 
-# A workflow's stored runtime choice. Mirrors lib/runner.ts; "local" is what the
-# studio selects for a workflow that carries none.
-WORKFLOW_RUNNERS = ("local", "docker")
+# A workflow's stored runtime choice. The list comes from providers.json, so a new
+# provider needs no edit here; "local" is what the studio selects by default.
+WORKFLOW_RUNNERS = tuple(_PROVIDERS["order"])
 DEFAULT_WORKFLOW_RUNNER = "local"
 
 # How long a stopped container gets to reach "running" after `docker start`.
@@ -808,10 +743,26 @@ async def run(body: RunRequest):
             detail={"type": "validation_error", "message": str(exc)},
         ) from exc
 
+    runner = (body.runner or _runner_name()).strip().lower()
+    if runner not in WORKFLOW_RUNNERS:
+        raise HTTPException(
+            status_code=400,
+            detail={
+                "type": "validation_error",
+                "message": f"runner must be one of: {', '.join(WORKFLOW_RUNNERS)}.",
+            },
+        )
+
+    if runner == "modal":
+        # Cloud providers run out of process: submitting returns immediately and
+        # the studio polls the run record, so a node may take hours.
+        submission = await asyncio.to_thread(_submit_remote_node, body, runner)
+        return JSONResponse(status_code=202, content=submission)
+
     try:
         # execute_code is blocking (it drives a child process over a socket).
         result = await asyncio.to_thread(
-            _run_node, body.code, body.inputs, body.parameters, {}, body.runner
+            _run_node, body.code, body.inputs, body.parameters, {}, runner
         )
         return {"node_id": body.node_id, **result}
     except NodeTimeout as exc:
@@ -830,6 +781,187 @@ async def run(body: RunRequest):
             status_code=500,
             detail={"type": "execution_error", "message": str(exc)},
         ) from exc
+
+
+# --- remote providers -----------------------------------------------------
+#
+# A remote provider runs the node out of process: submission records the intent
+# and starts the driver, and the studio polls the run record. That is what lets a
+# node take minutes or hours without owning an HTTP request.
+
+
+def _run_paths(run_id: str) -> tuple[Path, Path, Path]:
+    return (
+        RUNS_DIR / f"{run_id}.json",
+        RUNS_DIR / f"{run_id}.request.json",
+        RUNS_DIR / f"{run_id}.log",
+    )
+
+
+def _provider_status(provider_id: str) -> dict:
+    if provider_id == "modal":
+        return modal_runtime.status()
+    return {"provider": provider_id, "ready": True, "missing": [], "hints": []}
+
+
+def _submit_remote_node(body: "RunRequest", provider_id: str) -> dict:
+    readiness = _provider_status(provider_id)
+    if not readiness.get("ready"):
+        raise HTTPException(
+            status_code=409,
+            detail={
+                "type": "runtime_not_configured",
+                "provider": provider_id,
+                "missing": readiness.get("missing", []),
+                "hints": readiness.get("hints", []),
+                "message": (
+                    f"The {provider_id} runtime is not configured yet. "
+                    + " ".join(readiness.get("hints", []))
+                ),
+            },
+        )
+
+    options = runner_base.resolved_options(_PROVIDERS, provider_id, body.runner_options)
+    cap = _PROVIDERS["fileCapBytes"]
+    files, rejected = runner_base.plan_uploads([body.parameters, body.inputs], cap)
+    if rejected:
+        listing = ", ".join(f"{item['path']} ({item['size']} bytes)" for item in rejected)
+        raise HTTPException(
+            status_code=400,
+            detail={
+                "type": "file_too_large",
+                "provider": provider_id,
+                "cap": cap,
+                "files": rejected,
+                "message": (
+                    f"{provider_id} runs take files up to {cap} bytes each; "
+                    f"these are larger: {listing}."
+                ),
+            },
+        )
+
+    run_id = runner_base.new_run_id()
+    record_path, request_path, log_path = _run_paths(run_id)
+
+    request = {
+        "run_id": run_id,
+        "provider": provider_id,
+        "node_id": body.node_id,
+        "workflow_id": body.workflow_id,
+        "script": body.code,
+        "inputs": body.inputs,
+        "parameters": body.parameters,
+        "options": options,
+        "files": files,
+        "record_path": str(record_path),
+    }
+    runner_base.write_record(request_path, request)
+    runner_base.create_record(
+        record_path,
+        run_id=run_id,
+        provider=provider_id,
+        node_id=body.node_id,
+        workflow_id=body.workflow_id,
+        options=options,
+        files={path: meta["sha256"] for path, meta in files.items()},
+        logPath=str(log_path),
+    )
+
+    command = modal_runtime.driver_command(request_path)
+    with open(log_path, "w", encoding="utf-8") as log:
+        process = subprocess.Popen(
+            command,
+            cwd=str(PLUGIN_ROOT),
+            stdout=log,
+            stderr=subprocess.STDOUT,
+            text=True,
+            encoding="utf-8",
+            errors="replace",
+            start_new_session=True,
+        )
+    runner_base.update_record(record_path, driverPid=process.pid)
+
+    return {
+        "run_id": run_id,
+        "provider": provider_id,
+        "node_id": body.node_id,
+        "status": "queued",
+        "phase": "queued",
+    }
+
+
+@router.get("/runtime/providers")
+async def runtime_providers():
+    """Descriptors plus live readiness, for the selector and its setup dialog."""
+
+    def build() -> dict:
+        entries = []
+        for provider_id in _PROVIDERS["order"]:
+            entry = _PROVIDERS["providers"][provider_id]
+            entries.append(
+                {
+                    "id": provider_id,
+                    "label": entry.get("label", provider_id),
+                    "description": entry.get("description", ""),
+                    "kind": entry.get("kind", "builtin"),
+                    "needsSetup": bool(entry.get("needsSetup")),
+                    "defaults": entry.get("defaults", {}),
+                    "options": entry.get("options", []),
+                    "status": _provider_status(provider_id),
+                }
+            )
+        return {"fileCapBytes": _PROVIDERS["fileCapBytes"], "providers": entries}
+
+    return await asyncio.to_thread(build)
+
+
+@router.get("/runtime/runs")
+async def list_runs(status: str | None = None, provider: str | None = None):
+    """Run records, newest first — what the canvas re-attaches to after a reload."""
+    records = []
+    for path in sorted(RUNS_DIR.glob("*.json")):
+        if path.name.endswith(".request.json"):
+            continue
+        record = runner_base.read_record(path)
+        if not record:
+            continue
+        if status and record.get("status") != status:
+            continue
+        if provider and record.get("provider") != provider:
+            continue
+        records.append(record)
+    records.sort(key=lambda item: item.get("createdAt", ""), reverse=True)
+    return records
+
+
+@router.get("/runtime/runs/{run_id}")
+async def get_run(run_id: str):
+    record_path, _, _ = _run_paths(run_id)
+    record = runner_base.read_record(record_path)
+    if record is None:
+        raise HTTPException(status_code=404, detail="Run not found")
+    return record
+
+
+@router.delete("/runtime/runs/{run_id}")
+async def cancel_run(run_id: str):
+    """Stop a node run: signal the driver, which terminates the sandbox."""
+    record_path, _, _ = _run_paths(run_id)
+    record = runner_base.read_record(record_path)
+    if record is None:
+        raise HTTPException(status_code=404, detail="Run not found")
+
+    pid = record.get("driverPid")
+    if isinstance(pid, int) and record.get("status") == "running":
+        try:
+            os.kill(pid, signal.SIGTERM)
+        except OSError:
+            logger.debug("Driver %s was already gone", pid)
+
+    updated = runner_base.update_record(
+        record_path, status="cancelled", phase="cancelled", endedAt=runner_base.now()
+    )
+    return updated or record
 
 
 @router.get("/runner")

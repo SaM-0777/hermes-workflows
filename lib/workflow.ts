@@ -12,6 +12,8 @@ export type Workflow = {
   edges: Edge[];
   /** Where node Python runs; absent on workflows saved before the selector. */
   runner?: WorkflowRunner;
+  /** Per-workflow overrides for the provider's descriptor options. */
+  runnerOptions?: Record<string, unknown>;
 };
 
 export type WorkflowSummary = Pick<
@@ -36,6 +38,7 @@ export async function saveWorkflow(
   workflow: Pick<Workflow, "id" | "nodes" | "edges"> & {
     name?: string;
     runner?: WorkflowRunner;
+    runnerOptions?: Record<string, unknown>;
   },
 ): Promise<Workflow> {
   return hostRest<Workflow>(`/workflows/${workflow.id}`, {
@@ -45,6 +48,7 @@ export async function saveWorkflow(
       nodes: workflow.nodes,
       edges: workflow.edges,
       runner: workflow.runner,
+      runnerOptions: workflow.runnerOptions,
     },
   });
 }

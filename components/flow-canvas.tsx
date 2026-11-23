@@ -16,7 +16,7 @@ import {
   type IsValidConnection,
   Panel,
 } from "@xyflow/react";
-import { Code2, Play, Save, Square, Trash2 } from "lucide-react";
+import { Code2, Play, Save, SlidersHorizontal, Square, Trash2 } from "lucide-react";
 import type { NodeData, WorkflowNode, WorkflowRuntimeState } from "@/lib/node";
 import {
   CONTROL_EDGE_KIND,
@@ -38,10 +38,15 @@ import { getWorkflowId } from "@/lib/host";
 import { saveWorkflow, loadWorkflow } from "@/lib/workflow";
 import {
   DEFAULT_WORKFLOW_RUNNER,
+  loadProviders,
   normalizeWorkflowRunner,
+  providerById,
   runnerLabels,
+  type WorkflowProvider,
   type WorkflowRunner,
 } from "@/lib/runner";
+import { RuntimeOptionsDialog } from "./runtime-options-dialog";
+import { RuntimeSetupDialog } from "./runtime-setup-dialog";
 import {
   useNodeRuntimeState,
   WorkflowRuntimeProvider,
@@ -97,6 +102,11 @@ export default function FlowCanvas({ runNonce = 0 }: { runNonce?: number }) {
   // Where this workflow's node Python runs. Persisted with the workflow, and the
   // default for a workflow that has never been saved with one.
   const [runner, setRunner] = useState<WorkflowRunner>(DEFAULT_WORKFLOW_RUNNER);
+  // Provider descriptors (from the backend) and this workflow's overrides.
+  const [providers, setProviders] = useState<WorkflowProvider[]>([]);
+  const [runnerOptions, setRunnerOptions] = useState<Record<string, unknown>>({});
+  const [optionsOpen, setOptionsOpen] = useState(false);
+  const [setupOpen, setSetupOpen] = useState(false);
   const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
   const [isSaving, setIsSaving] = useState(false);
   const [runtimeState, setRuntimeState] = useState<WorkflowRuntimeState>({});
@@ -187,6 +197,21 @@ export default function FlowCanvas({ runNonce = 0 }: { runNonce?: number }) {
     [screenToFlowPosition, setNodes],
   );
 
+  // Provider descriptors come from the backend, so a new runtime needs no UI edit.
+  useEffect(() => {
+    let active = true;
+    void loadProviders()
+      .then((list) => {
+        if (active) setProviders(list);
+      })
+      .catch((error) => {
+        console.error("Could not load runtimes:", error);
+      });
+    return () => {
+      active = false;
+    };
+  }, []);
+
   // The page hands the workflow id down; load it once, straight from the backend.
   useEffect(() => {
     const id = getWorkflowId();
@@ -202,6 +227,7 @@ export default function FlowCanvas({ runNonce = 0 }: { runNonce?: number }) {
         setNodes(workflow.nodes as WorkflowNode[]);
         setEdges(workflow.edges as WorkflowEdge[]);
         setRunner(normalizeWorkflowRunner(workflow.runner));
+        setRunnerOptions(workflow.runnerOptions ?? {});
       })
       .catch((error) => {
         if (!active) return;
@@ -244,6 +270,7 @@ export default function FlowCanvas({ runNonce = 0 }: { runNonce?: number }) {
           },
           undefined,
           runner,
+          runnerOptions,
         );
         await graph.invoke(
           { results: {} },
@@ -258,7 +285,7 @@ export default function FlowCanvas({ runNonce = 0 }: { runNonce?: number }) {
         setIsRunning(false);
       }
     },
-    [isRunning, runner],
+    [isRunning, runner, runnerOptions],
   );
 
   // A run requested from outside the canvas (host event or the toolbar button).
@@ -284,8 +311,27 @@ export default function FlowCanvas({ runNonce = 0 }: { runNonce?: number }) {
       });
   }, [runNonce, isRunning, setNodes, setEdges]);
 
+  const selectedProvider = providerById(providers, runner);
+  const providerNeedsSetup =
+    Boolean(selectedProvider?.needsSetup) &&
+    selectedProvider?.status?.ready === false;
+
   const handleRun = () => {
+    // A remote runtime that isn't configured sends the user to the setup steps
+    // instead of failing a run.
+    if (providerNeedsSetup) {
+      setSetupOpen(true);
+      return;
+    }
     setPendingApproval(true);
+  };
+
+  const handleRunnerChange = (next: WorkflowRunner) => {
+    setRunner(next);
+    const provider = providerById(providers, next);
+    if (provider?.needsSetup && provider.status && !provider.status.ready) {
+      setSetupOpen(true);
+    }
   };
   const handleStop = () => {
     setIsRunning(false);
@@ -301,7 +347,7 @@ export default function FlowCanvas({ runNonce = 0 }: { runNonce?: number }) {
     setIsSaving(true);
 
     try {
-      await saveWorkflow({ id: workflowId, nodes, edges, runner });
+      await saveWorkflow({ id: workflowId, nodes, edges, runner, runnerOptions });
       toast.success("Workflow saved successfully");
     } catch (error) {
       const err = error as Error;
@@ -387,10 +433,24 @@ export default function FlowCanvas({ runNonce = 0 }: { runNonce?: number }) {
                 </Button>
                 <RuntimeSelector
                   value={runner}
-                  onChange={setRunner}
+                  onChange={handleRunnerChange}
+                  providers={providers}
                   disabled={isRunning}
                   className="shadow-sm bg-white m-0"
                 />
+                {selectedProvider?.options?.length ? (
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    disabled={isRunning}
+                    onClick={() => setOptionsOpen(true)}
+                    className="shadow-sm m-0"
+                    aria-label="Runtime options"
+                    title="Runtime options"
+                  >
+                    <SlidersHorizontal className="size-3.5" />
+                  </Button>
+                ) : null}
               </div>
             )}
             <Button
@@ -435,6 +495,21 @@ export default function FlowCanvas({ runNonce = 0 }: { runNonce?: number }) {
             );
             setRenamingEdge(null);
           }}
+        />
+
+        <RuntimeOptionsDialog
+          open={optionsOpen}
+          provider={selectedProvider}
+          value={runnerOptions}
+          onOpenChange={setOptionsOpen}
+          onChange={setRunnerOptions}
+        />
+
+        <RuntimeSetupDialog
+          open={setupOpen}
+          provider={selectedProvider}
+          onOpenChange={setSetupOpen}
+          onRechecked={(list) => setProviders(list)}
         />
 
         <DeleteWorkflow

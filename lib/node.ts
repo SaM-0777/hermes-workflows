@@ -144,6 +144,35 @@ export function isRecord(value: unknown): value is Record<string, unknown> {
   return value !== null && typeof value === "object" && !Array.isArray(value);
 }
 
+/**
+ * The node's declared parameters as typed values, which is what the backend
+ * hands to build_output(parameters=...). The studio stores every default as a
+ * string; Dataset and Text pass through, media types hold a JSON array of path
+ * references, and a blank default is omitted so `parameters.get(name, fallback)`
+ * behaves as documented.
+ */
+export function resolveParameters(data: NodeData): Record<string, unknown> {
+  const resolved: Record<string, unknown> = {};
+  for (const parameter of data.config?.parameters ?? []) {
+    const raw = parameter.defaultValue ?? "";
+    if (raw.trim() === "") continue;
+    if (
+      parameter.type === "Images" ||
+      parameter.type === "Videos" ||
+      parameter.type === "Audios"
+    ) {
+      try {
+        resolved[parameter.name] = JSON.parse(raw);
+      } catch {
+        resolved[parameter.name] = raw;
+      }
+      continue;
+    }
+    resolved[parameter.name] = raw;
+  }
+  return resolved;
+}
+
 export function isValidId(id: unknown): id is string {
   return typeof id === "string" && /^[a-zA-Z0-9_-]{1,80}$/.test(id);
 }
@@ -154,19 +183,53 @@ export interface NodeExecutionResult {
   output: unknown;
 }
 
+/** Cloud providers submit and return a run id; these poll that record. */
+const RUN_POLL_MS = 1200;
+const RUN_POLL_LIMIT_MS = 24 * 60 * 60 * 1000;
+
+async function awaitRun(runId: string): Promise<Record<string, unknown>> {
+  const deadline = Date.now() + RUN_POLL_LIMIT_MS;
+
+  while (Date.now() < deadline) {
+    const record = await hostRest<Record<string, unknown>>(
+      `/runtime/runs/${runId}`,
+      { method: "GET" },
+    );
+    const status = record?.status;
+
+    if (status === "completed") {
+      return { status: "completed", output: record.output, run_id: runId };
+    }
+    if (status === "failed") {
+      const error = isRecord(record.error) ? record.error : {};
+      throw new Error(
+        typeof error.message === "string" ? error.message : "Node run failed.",
+      );
+    }
+    if (status === "cancelled") {
+      throw new Error("Node run was cancelled.");
+    }
+
+    await new Promise((resolve) => setTimeout(resolve, RUN_POLL_MS));
+  }
+
+  throw new Error(`Node run ${runId} did not finish; check it in the runtime runs list.`);
+}
+
 export async function runNode(
   node: WorkflowNode,
   inputs: Record<string, unknown> = {},
   runner?: WorkflowRunner,
+  runnerOptions?: Record<string, unknown>,
 ): Promise<Record<string, unknown>> {
   const code = node.data.execution?.pythonCode;
   if (!code?.trim()) {
     throw new Error(`Node "${node.id}" has no valid Execution.`);
   }
 
-  // The backend runs the node where `runner` points — the hermes-workflow
-  // container, or Hermes' own execute_code kernel child when the workflow asks
-  // for "local". Omitting it falls back to HERMES_WORKFLOW_RUNNER.
+  // The backend runs the node wherever `runner` points. Built-in providers run
+  // synchronously; a remote provider answers 202 with a run id and the studio
+  // polls the record, so one node may take hours without holding a request open.
   // `parameters` carries the node's declared defaults, resolved once here, so
   // build_output receives them instead of an empty dict.
   const result = await hostRest<Record<string, unknown>>("/run", {
@@ -175,10 +238,15 @@ export async function runNode(
       node_id: node.id,
       code,
       inputs,
-      parameters: node.data,
+      parameters: resolveParameters(node.data),
       runner,
+      runner_options: runnerOptions,
     },
   });
+
+  if (isRecord(result) && typeof result.run_id === "string") {
+    return awaitRun(result.run_id);
+  }
 
   if (
     !isRecord(result) ||

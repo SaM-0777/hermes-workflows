@@ -1,0 +1,110 @@
+{
+  "$comment": "Runtime providers for Workflow Studio. Add a provider by adding a descriptor here plus an adapter in runners/<id>.py. Keys in `defaults` are the provider's own defaults; a workflow may override any key listed in `options`.",
+  "fileCapBytes": 104857600,
+  "providers": [
+    {
+      "id": "local",
+      "label": "Local",
+      "kind": "builtin",
+      "description": "Hermes' own Python kernel — no Docker needed",
+      "needsSetup": false,
+      "defaults": {
+        "timeoutSeconds": 300
+      },
+      "options": [
+        { "key": "timeoutSeconds", "label": "Node timeout (s)", "type": "number", "min": 30, "max": 86400 }
+      ]
+    },
+    {
+      "id": "docker",
+      "label": "Docker",
+      "kind": "builtin",
+      "description": "The hermes-workflow container — its Python 3.12 and packages",
+      "needsSetup": false,
+      "defaults": {
+        "timeoutSeconds": 300,
+        "container": "hermes-workflow",
+        "python": "python3",
+        "workdir": "/work"
+      },
+      "options": [
+        { "key": "timeoutSeconds", "label": "Node timeout (s)", "type": "number", "min": 30, "max": 86400 }
+      ]
+    },
+    {
+      "id": "modal",
+      "label": "Modal",
+      "kind": "remote",
+      "description": "Cloud sandboxes on Modal — CPU or GPU, shared volume at /data",
+      "needsSetup": true,
+      "defaults": {
+        "timeoutSeconds": 300,
+        "cpu": 1,
+        "memory": 2048,
+        "gpu": "",
+        "image": "python:3.12-slim",
+        "imageSource": "registry",
+        "aptPackages": "libgl1 libglib2.0-0 libxcb1",
+        "pipPackages": "",
+        "pipIndexUrl": "",
+        "venvDir": "/data/venv",
+        "app": "hermes-workflow-nodes",
+        "volume": "hermes-workflow",
+        "workdir": "/work",
+        "dataDir": "/data",
+        "python": "python3"
+      },
+      "options": [
+        {
+          "key": "gpu",
+          "label": "GPU",
+          "type": "select",
+          "choices": ["", "T4", "L4", "A10G", "A100", "H100"],
+          "help": "Empty runs on CPU. GPU sandboxes run under Modal's gvisor runtime."
+        },
+        { "key": "timeoutSeconds", "label": "Node timeout (s)", "type": "number", "min": 30, "max": 86400 },
+        { "key": "cpu", "label": "CPU cores", "type": "number", "min": 0.125, "max": 32, "step": 0.125 },
+        { "key": "memory", "label": "Memory (MB)", "type": "number", "min": 128, "max": 262144 },
+        { "key": "image", "label": "Image", "type": "text", "help": "A container image reference, or the name of an image published to Modal." },
+        {
+          "key": "imageSource",
+          "label": "Image source",
+          "type": "select",
+          "choices": ["registry", "name"],
+          "help": "registry = container image reference (e.g. python:3.12-slim); name = image previously published with Image.publish(). The two share a syntax, so the plugin needs to be told which one the value is."
+        },
+        {
+          "key": "aptPackages",
+          "label": "OS packages (apt)",
+          "type": "text",
+          "help": "Space-separated Debian packages baked into the image. Defaults mirror the plugin Dockerfile's apt line; empty disables the apt layer."
+        },
+        {
+          "key": "pipPackages",
+          "label": "Python packages (baked)",
+          "type": "text",
+          "help": "Space-separated packages baked into the image with uv. Empty lets nodes install into the volume venv at run time instead."
+        },
+        {
+          "key": "pipIndexUrl",
+          "label": "Pip index URL",
+          "type": "text",
+          "help": "Optional index for the baked packages, e.g. https://download.pytorch.org/whl/cpu."
+        },
+        {
+          "key": "torchIndexUrl",
+          "label": "Torch index URL",
+          "type": "text",
+          "help": "Index the torch package is installed from when it is baked into the image; PyPI's torch wheel is the CPU build. e.g. https://download.pytorch.org/whl/cu130."
+        },
+        {
+          "key": "venvDir",
+          "label": "Volume venv",
+          "type": "text",
+          "help": "Venv on the modal volume that nodes run with, so run-time installs survive into the next sandbox. Empty runs the image's python."
+        },
+        { "key": "volume", "label": "Volume", "type": "text", "help": "Created on first use; shared by every node of a workflow." }
+      ]
+    }
+  ]
+}

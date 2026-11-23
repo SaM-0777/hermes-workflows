@@ -1,0 +1,22 @@
+# Python dependencies for the hermes-workflow plugin.
+#
+# Declared per the Hermes plugin guide ("Python dependencies"): a pyproject.toml
+# next to plugin.yaml is the preferred declaration. Hermes' package manager (PM)
+# resolves this together with core + enabled plugins, asks consent at
+# install/enable, and publishes a fresh environment generation atomically. We do
+# not create a venv or run pip ourselves.
+#
+# Bounds follow the guide's dependency hygiene: an upper bound on every package
+# and a floor on an API-compatible release. The Modal runtime uses the Sandbox
+# API (App.lookup, Sandbox.create, Sandbox.filesystem), so the floor must be a
+# 1.x release that provides it; raise the floor if an older 1.x lacks a call we
+# use. No [build-system]: PM snapshots a backend-less project under a unique
+# hermes-plugin-* name, exactly as the guide's example shows.
+[project]
+name = "hermes-workflow"
+version = "0.2.0"
+description = "Workflow Studio runtime providers for Hermes (local, docker, modal)."
+requires-python = ">=3.10"
+dependencies = [
+    "modal>=1.0,<2",
+]
