@@ -16,8 +16,6 @@ export type WorkflowSummary = Pick<
   "id" | "name" | "createdAt" | "updatedAt"
 >;
 
-// Straight to the plugin's own backend routes; ctx.rest is installed by register().
-
 export async function listWorkflows(): Promise<WorkflowSummary[]> {
   return hostRest<WorkflowSummary[]>("/workflows", { method: "GET" });
 }

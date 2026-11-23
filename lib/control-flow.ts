@@ -31,7 +31,6 @@ export const DATA_EDGE_STYLE = {
 } as const;
 
 export const CONTROL_EDGE_STYLE = {
-  // Same stroke as a data edge; the dash is what tells them apart.
   stroke: "#64748b",
   strokeWidth: 2,
   strokeDasharray: "6 4",
