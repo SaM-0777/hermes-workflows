@@ -646,35 +646,3 @@ REQUEST_RUN_WORKFLOW = {
         "required": ["workflow_id"],
     },
 }
-
-CHECK_WORKFLOW_RUNTIME = {
-    "name": "check_workflow_runtime",
-    "description": (
-        "Check where workflow nodes execute: whether the Docker CLI and daemon are "
-        "available, whether the hermes-workflow image exists, and whether its "
-        "container is running. Returns status, ready, message, and next_action "
-        "(none, ask_user_to_start_docker, or request_setup_permission). Started "
-        "nothing: no daemon, image, or container is created."
-    ),
-    "parameters": {
-        "type": "object",
-        "properties": {},
-        "required": [],
-    },
-}
-
-SETUP_WORKFLOW_RUNTIME = {
-    "name": "setup_workflow_runtime",
-    "description": (
-        "Build the hermes-workflow node image and/or start its container so "
-        "workflow nodes can execute. Ask the user for permission first: this tool "
-        "is gated by an approval prompt and only runs after the user approves. Use "
-        "check_workflow_runtime to see what is missing. It refuses to start the "
-        "Docker daemon."
-    ),
-    "parameters": {
-        "type": "object",
-        "properties": {},
-        "required": [],
-    },
-}
