@@ -75,6 +75,7 @@ export async function buildFlowGraph(
   onExecutionEvent?: (event: WorkflowExecutionEvent) => void,
   runner?: WorkflowRunner,
   runnerOptions?: Record<string, unknown>,
+  sessionId?: string | null,
 ) {
   const connectedIds = new Set<string>();
 
@@ -166,7 +167,13 @@ export async function buildFlowGraph(
           inputs,
         });
 
-        const result = await runNode(node, inputs, runner, runnerOptions);
+        const result = await runNode(
+          node,
+          inputs,
+          runner,
+          runnerOptions,
+          sessionId,
+        );
         const completedAt = Date.now();
 
         onNodeStateChange?.(node.id, {

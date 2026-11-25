@@ -81,7 +81,7 @@ export function RuntimeOptionsDialog({
           </DialogDescription>
         </DialogHeader>
 
-        <div className="space-y-3">
+        <div className="space-y-3 max-h-[75vh] overflow-y-auto">
           {options.map((option) => (
             <div key={option.key} className="space-y-1">
               <label className="text-xs font-medium text-muted-foreground">

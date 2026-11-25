@@ -37,8 +37,11 @@
       "kind": "remote",
       "description": "Cloud sandboxes on Modal — CPU or GPU, shared volume at /data",
       "needsSetup": true,
+      "scope": "workflow",
       "defaults": {
         "timeoutSeconds": 300,
+        "workflowTimeoutSeconds": 3600,
+        "idleTimeoutSeconds": 600,
         "cpu": 1,
         "memory": 2048,
         "gpu": "",
@@ -59,10 +62,26 @@
           "key": "gpu",
           "label": "GPU",
           "type": "select",
-          "choices": ["", "T4", "L4", "A10G", "A100", "H100"],
-          "help": "Empty runs on CPU. GPU sandboxes run under Modal's gvisor runtime."
+          "choices": ["", "T4", "L4", "A10", "L40S", "RTX-PRO-6000", "A100", "A100-80GB", "H100", "H200", "B200", "B300"],
+          "help": "Empty runs on CPU. GPU sandboxes run under Modal's gvisor runtime. RTX-PRO-6000 is the 96 GB Blackwell card used by this workflow's Inkling 2 Mini LoRA training."
         },
         { "key": "timeoutSeconds", "label": "Node timeout (s)", "type": "number", "min": 30, "max": 86400 },
+        {
+          "key": "workflowTimeoutSeconds",
+          "label": "Workflow timeout (s)",
+          "type": "number",
+          "min": 60,
+          "max": 86400,
+          "help": "How long the workflow sandbox may live. One sandbox is created by the first node and reused by every later node, so this bounds the whole run; each node still stops at its own Node timeout."
+        },
+        {
+          "key": "idleTimeoutSeconds",
+          "label": "Idle timeout (s)",
+          "type": "number",
+          "min": 60,
+          "max": 86400,
+          "help": "Modal terminates the workflow sandbox after this long without activity. It is the safety net when the studio disappears mid-run; a normal run closes the sandbox when it finishes."
+        },
         { "key": "cpu", "label": "CPU cores", "type": "number", "min": 0.125, "max": 32, "step": 0.125 },
         { "key": "memory", "label": "Memory (MB)", "type": "number", "min": 128, "max": 262144 },
         { "key": "image", "label": "Image", "type": "text", "help": "A container image reference, or the name of an image published to Modal." },
@@ -102,6 +121,12 @@
           "label": "Volume venv",
           "type": "text",
           "help": "Venv on the modal volume that nodes run with, so run-time installs survive into the next sandbox. Empty runs the image's python."
+        },
+        {
+          "key": "secrets",
+          "label": "Modal secrets",
+          "type": "text",
+          "help": "Space-separated Modal secret names injected as environment variables into the sandbox, e.g. hermes-workflow-secrets. Create them with `modal secret create <name> KEY=value`; values never enter the workflow."
         },
         { "key": "volume", "label": "Volume", "type": "text", "help": "Created on first use; shared by every node of a workflow." }
       ]

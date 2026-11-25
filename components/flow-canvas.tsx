@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import {
   addEdge,
   Background,
@@ -37,10 +37,13 @@ import { buildFlowGraph, WORKFLOW_RECURSION_LIMIT } from "@/lib/flow-graph";
 import { getWorkflowId } from "@/lib/host";
 import { saveWorkflow, loadWorkflow } from "@/lib/workflow";
 import {
+  closeWorkflowSession,
   DEFAULT_WORKFLOW_RUNNER,
   loadProviders,
   normalizeWorkflowRunner,
+  openWorkflowSession,
   providerById,
+  providerUsesSession,
   runnerLabels,
   type WorkflowProvider,
   type WorkflowRunner,
@@ -100,10 +103,7 @@ export default function FlowCanvas({ runNonce = 0 }: { runNonce?: number }) {
   const [nodes, setNodes, onNodesChange] = useNodesState<WorkflowNode>([]);
   const [edges, setEdges, onEdgesChange] = useEdgesState<WorkflowEdge>([]);
   const [isRunning, setIsRunning] = useState(false);
-  // Where this workflow's node Python runs. Persisted with the workflow, and the
-  // default for a workflow that has never been saved with one.
   const [runner, setRunner] = useState<WorkflowRunner>(DEFAULT_WORKFLOW_RUNNER);
-  // Provider descriptors (from the backend) and this workflow's overrides.
   const [providers, setProviders] = useState<WorkflowProvider[]>([]);
   const [runnerOptions, setRunnerOptions] = useState<Record<string, unknown>>({});
   const [optionsOpen, setOptionsOpen] = useState(false);
@@ -113,6 +113,9 @@ export default function FlowCanvas({ runNonce = 0 }: { runNonce?: number }) {
   const [runtimeState, setRuntimeState] = useState<WorkflowRuntimeState>({});
   const [pendingApproval, setPendingApproval] = useState<boolean>(false);
   const [renamingEdge, setRenamingEdge] = useState<WorkflowEdge | null>(null);
+  // Session opened for a workflow-scoped runtime, kept in a ref so Stop can close
+  // it without re-running the callback chain.
+  const activeSession = useRef<string | null>(null);
 
   const isValidConnection: IsValidConnection<Edge> = useCallback(
     (connection) => {
@@ -215,21 +218,6 @@ export default function FlowCanvas({ runNonce = 0 }: { runNonce?: number }) {
 
   // The page hands the workflow id down; load it from the backend.
   useEffect(() => {
-    let active = true;
-    void loadProviders()
-      .then((list) => {
-        if (active) setProviders(list);
-      })
-      .catch((error) => {
-        console.error("Could not load runtimes:", error);
-      });
-    return () => {
-      active = false;
-    };
-  }, []);
-
-  // The page hands the workflow id down; load it from the backend.
-  useEffect(() => {
     const id = getWorkflowId();
     if (!id) return;
 
@@ -274,7 +262,24 @@ export default function FlowCanvas({ runNonce = 0 }: { runNonce?: number }) {
       }
       setRuntimeState(initialRuntimeState);
       setIsRunning(true);
+
+      // A workflow-scoped runtime keeps one sandbox for the whole run: the
+      // session is opened before the graph starts, every node joins it, and
+      // closing it in the finally is what terminates the sandbox.
+      const provider = providerById(providers, runner);
+      let sessionId: string | null = null;
+
       try {
+        if (providerUsesSession(provider)) {
+          const session = await openWorkflowSession({
+            workflow_id: workflowId,
+            runner,
+            runner_options: runnerOptions,
+          });
+          sessionId = session.session_id;
+          activeSession.current = sessionId;
+        }
+
         const graph = await buildFlowGraph(
           nodes,
           edges,
@@ -287,6 +292,7 @@ export default function FlowCanvas({ runNonce = 0 }: { runNonce?: number }) {
           undefined,
           runner,
           runnerOptions,
+          sessionId,
         );
         await graph.invoke(
           { results: {} },
@@ -298,13 +304,21 @@ export default function FlowCanvas({ runNonce = 0 }: { runNonce?: number }) {
           error instanceof Error ? error.message : "Workflow execution failed",
         );
       } finally {
+        if (sessionId) {
+          activeSession.current = null;
+          try {
+            await closeWorkflowSession(sessionId);
+          } catch (error) {
+            console.error("Could not close the workflow session:", error);
+          }
+        }
         setIsRunning(false);
       }
     },
-    [isRunning, runner, runnerOptions],
+    [isRunning, runner, runnerOptions, providers, workflowId],
   );
 
-  // A run requested from outside the canvas (host event or the toolbar button).
+  // A run requested from outside the canvas (host event or the toolbar button or TUI).
   useEffect(() => {
     if (!runNonce) return;
 
@@ -315,8 +329,11 @@ export default function FlowCanvas({ runNonce = 0 }: { runNonce?: number }) {
       .then((workflow) => {
         setNodes(workflow.nodes as WorkflowNode[]);
         setEdges(normalizeEdges(workflow.edges as WorkflowEdge[]));
-        // An agent-requested run honours the runtime saved with the workflow.
+        // An agent-requested run honours the runtime saved with the workflow, and
+        // its options too: state loaded before the last save would otherwise open
+        // the session with stale settings (an old GPU, an old OS package list).
         setRunner(normalizeWorkflowRunner(workflow.runner));
+        setRunnerOptions(workflow.runnerOptions ?? {});
         setPendingApproval(true);
       })
       .catch((error) => {
@@ -351,6 +368,15 @@ export default function FlowCanvas({ runNonce = 0 }: { runNonce?: number }) {
   };
   const handleStop = () => {
     setIsRunning(false);
+    // Stopping ends the run, so a workflow-scoped sandbox must go with it. The
+    // run's own finally is a second chance at this; closing twice is harmless.
+    const sessionId = activeSession.current;
+    if (sessionId) {
+      activeSession.current = null;
+      void closeWorkflowSession(sessionId).catch((error) => {
+        console.error("Could not close the workflow session:", error);
+      });
+    }
   };
   const handleSave = async () => {
     if (isSaving) return;

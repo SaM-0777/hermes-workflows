@@ -85,6 +85,25 @@ def _package_list(value) -> list[str]:
     return [item for item in re.split(r"[\s,]+", str(value or "")) if item]
 
 
+def _secrets(names: list[str]):
+    """Resolve Modal secrets by name, for injection into the sandbox.
+
+    The values stay in Modal: the workflow stores only the secret name, and node
+    code reads the keys from its environment. A name that does not exist fails
+    here, before a sandbox is created.
+    """
+    resolved = []
+    for name in names:
+        try:
+            resolved.append(modal.Secret.from_name(name))
+        except Exception as exc:  # noqa: BLE001 - a missing secret is the error
+            raise RuntimeError(
+                f"Could not resolve Modal secret {name!r}: {exc}. Create it with "
+                f"`modal secret create {name} KEY=value`."
+            ) from exc
+    return resolved
+
+
 def _with_pip(image, packages: list[str], index_url: str, torch_index_url: str = ""):
     """Bake Python packages into the image, so every node's sandbox has them.
 
@@ -207,12 +226,91 @@ def _upload(sandbox, files: dict, data_dir: str) -> tuple[dict[str, str], list[d
     return mapping, uploaded
 
 
+def _attach_sandbox(sandbox_id: str):
+    """Reattach to the sandbox a workflow run already created.
+
+    The first node of a workflow-scoped run creates the sandbox and records its
+    id in the session; later nodes call this instead of allocating a new one. A
+    sandbox that has already exited (workflow timeout, eviction, OOM) is reported
+    as a clear failure rather than silently replaced, because the run's data
+    would then be split across two machines.
+    """
+    try:
+        sandbox = modal.Sandbox.from_id(sandbox_id)
+    except Exception as exc:  # noqa: BLE001 - the message is the user-facing error
+        raise RuntimeError(
+            f"The workflow sandbox {sandbox_id!r} can no longer be reached, so the "
+            "run is over: it finished, was evicted, or hit its workflow timeout. "
+            f"Run the workflow again to start a new sandbox. Modal said: {exc}"
+        ) from exc
+
+    try:
+        exit_code = sandbox.poll()
+    except Exception:  # noqa: BLE001 - absence of a status means "assume alive"
+        exit_code = None
+
+    if exit_code is not None:
+        raise RuntimeError(
+            f"The workflow sandbox {sandbox_id!r} has already stopped (exit code "
+            f"{exit_code}), so this node cannot reuse it. Run the workflow again "
+            "to start a new sandbox."
+        )
+    return sandbox
+
+
+def terminate(request: dict) -> int:
+    """Close the sandbox a workflow-scoped run created.
+
+    Called when the run finishes or is cancelled. A sandbox that is already gone
+    is not an error: the idle timeout is the safety net for that case, and the
+    session record is closed either way so the UI stops treating it as live.
+    """
+    record_path = request.get("record_path")
+    session_path = request.get("session_path") or ""
+    sandbox_id = str(request.get("sandbox_id") or "")
+
+    if record_path:
+        _phase(record_path, "terminating", sandboxId=sandbox_id or None)
+
+    failure = ""
+    if sandbox_id:
+        try:
+            modal.Sandbox.from_id(sandbox_id).terminate()
+            print(f"[driver] terminated {sandbox_id}", flush=True)
+        except Exception as exc:  # noqa: BLE001 - reported, not raised
+            failure = str(exc)
+            print(f"[driver] terminate skipped: {exc}", file=sys.stderr, flush=True)
+
+    if session_path:
+        base.update_record(
+            session_path,
+            status="closed",
+            endedAt=base.now(),
+            **({"terminateError": failure} if failure else {}),
+        )
+    if record_path:
+        base.update_record(
+            record_path,
+            phase="finished",
+            status="completed",
+            endedAt=base.now(),
+            exitCode=0,
+            output={"sandbox_id": sandbox_id, "terminated": not failure},
+        )
+    return 0
+
+
 def run(request: dict) -> int:
     record_path = request["record_path"]
     run_id = request["run_id"]
     options = request.get("options") or {}
 
     timeout = int(options.get("timeoutSeconds") or 300)
+    # A workflow-scoped run keeps one sandbox for every node, so the sandbox cap
+    # is the workflow timeout and the idle timeout is what reaps it when the
+    # studio disappears. Neither applies to a per-node run.
+    workflow_timeout = int(options.get("workflowTimeoutSeconds") or 3600)
+    idle_timeout = int(options.get("idleTimeoutSeconds") or 600)
     data_dir = str(options.get("dataDir") or "/data")
     workdir = str(options.get("workdir") or "/work")
     python = str(options.get("python") or "python3")
@@ -223,42 +321,70 @@ def run(request: dict) -> int:
     image_source = str(options.get("imageSource") or "registry").strip().lower()
     apt_packages = _package_list(options.get("aptPackages"))
     pip_packages = _package_list(options.get("pipPackages"))
+    secret_names = _package_list(options.get("secrets"))
     pip_index_url = str(options.get("pipIndexUrl") or "").strip()
     torch_index_url = str(options.get("torchIndexUrl") or "").strip()
     venv_dir = str(options.get("venvDir") or "").strip()
 
     files = request.get("files") or {}
 
-    _phase(record_path, "starting", sandboxId=None)
+    # Workflow-scoped runs: the first node creates the sandbox and the session
+    # records its id; later nodes attach to it and leave it running for the next
+    # node. A run without a session keeps the per-node lifecycle.
+    session_path = str(request.get("session_path") or "")
+    session = base.read_record(session_path) if session_path else None
+    owns_sandbox = session is None
+    session_sandbox_id = str((session or {}).get("sandbox_id") or "")
 
-    volume = modal.Volume.from_name(volume_name, create_if_missing=True)
-    app_handle = modal.App.lookup(app_name, create_if_missing=True)
+    _phase(record_path, "starting", sandboxId=session_sandbox_id or None)
 
-    base_image = _image(image_name, image_source, apt_packages)
+    if session is not None and session_sandbox_id:
+        _phase(record_path, "attaching", sandboxId=session_sandbox_id)
+        sandbox = _attach_sandbox(session_sandbox_id)
+    else:
+        volume = modal.Volume.from_name(volume_name, create_if_missing=True)
+        app_handle = modal.App.lookup(app_name, create_if_missing=True)
 
-    try:
-        sandbox = modal.Sandbox.create(
-            app=app_handle,
-            image=_with_pip(base_image, pip_packages, pip_index_url, torch_index_url),
-            volumes={data_dir: volume},
-            workdir=workdir,
-            timeout=timeout + 120,  # sandbox outlives the exec so logs and cleanup work
-            gpu=gpu,
-            runtime="gvisor" if gpu else None,
-            cpu=options.get("cpu") or None,
-            memory=options.get("memory") or None,
-            env=_sandbox_env(options, data_dir, venv_dir),
-        )
-    except modal.exception.NotFoundError as exc:
-        # The image lookup happens here, not in from_name/from_registry, so this
-        # is where a wrong or unpublished reference surfaces.
-        raise RuntimeError(
-            _not_found_message(exc, image_name, image_source)
-        ) from exc
+        base_image = _image(image_name, image_source, apt_packages)
+
+        try:
+            sandbox = modal.Sandbox.create(
+                app=app_handle,
+                image=_with_pip(base_image, pip_packages, pip_index_url, torch_index_url),
+                volumes={data_dir: volume},
+                workdir=workdir,
+                # Per-node: the sandbox outlives the exec so logs and cleanup
+                # work. Workflow-scoped: it must outlive every node of the run.
+                timeout=(workflow_timeout + 120) if session is not None else timeout + 120,
+                idle_timeout=idle_timeout if session is not None else None,
+                gpu=gpu,
+                runtime="gvisor" if gpu else None,
+                cpu=options.get("cpu") or None,
+                memory=options.get("memory") or None,
+                env=_sandbox_env(options, data_dir, venv_dir),
+                secrets=_secrets(secret_names) if secret_names else None,
+            )
+        except modal.exception.NotFoundError as exc:
+            # The image lookup happens here, not in from_name/from_registry, so this
+            # is where a wrong or unpublished reference surfaces.
+            raise RuntimeError(
+                _not_found_message(exc, image_name, image_source)
+            ) from exc
+
+        if session is not None:
+            base.update_record(
+                session_path,
+                sandbox_id=getattr(sandbox, "object_id", "") or "",
+                sandboxCreatedAt=base.now(),
+            )
 
     try:
         sandbox_id = getattr(sandbox, "object_id", None) or ""
-        base.update_record(record_path, sandboxId=sandbox_id)
+        base.update_record(
+            record_path,
+            sandboxId=sandbox_id,
+            secrets=secret_names,
+        )
         print(f"[driver] sandbox {sandbox_id}", flush=True)
 
         _phase(record_path, "uploading")
@@ -348,10 +474,23 @@ def run(request: dict) -> int:
         )
         return 0
     finally:
-        try:
-            sandbox.terminate()
-        except Exception:  # noqa: BLE001 - cleanup must not mask the result
-            traceback.print_exc()
+        if owns_sandbox:
+            try:
+                sandbox.terminate()
+            except Exception:  # noqa: BLE001 - cleanup must not mask the result
+                traceback.print_exc()
+        elif session_path:
+            # The sandbox stays alive for the next node; record what it last did
+            # so the session is inspectable while the run is in flight.
+            try:
+                base.update_record(
+                    session_path,
+                    lastNodeId=request.get("node_id"),
+                    lastRunId=run_id,
+                    nodeSandboxId=getattr(sandbox, "object_id", "") or "",
+                )
+            except Exception:  # noqa: BLE001 - bookkeeping only
+                traceback.print_exc()
 
 
 def _run_from_args(arglist) -> None:
@@ -378,7 +517,12 @@ def _run_from_args(arglist) -> None:
     request = json.loads(Path(request_path).read_text(encoding="utf-8"))
 
     try:
-        code = run(request)
+        # Terminate-only requests close the sandbox a workflow run created; a
+        # node request creates, attaches to, or uses a sandbox as usual.
+        if str(request.get("mode") or "node") == "terminate":
+            code = terminate(request)
+        else:
+            code = run(request)
     except Exception as exc:  # noqa: BLE001 - the record is the user-facing error
         base.update_record(
             request["record_path"],

@@ -192,6 +192,20 @@ def descriptor(providers: dict, provider_id: str) -> dict:
     return entry
 
 
+def workflow_scoped(providers: dict, provider_id: str) -> bool:
+    """Whether this provider keeps one execution unit for a whole workflow run.
+
+    Only providers that declare ``"scope": "workflow"`` get a session: the first
+    node creates the sandbox, later nodes attach to it, and the studio closes it
+    when the run ends. Everything else stays per-node.
+    """
+    try:
+        entry = descriptor(providers, provider_id)
+    except KeyError:
+        return False
+    return str(entry.get("scope") or "node").strip().lower() == "workflow"
+
+
 def resolved_options(providers: dict, provider_id: str, overrides: dict | None) -> dict:
     """Descriptor defaults with the workflow's overrides applied.
 
@@ -376,3 +390,59 @@ def create_record(path: str | Path, **fields: Any) -> dict:
     }
     write_record(path, record)
     return record
+
+
+# --- run sessions ---------------------------------------------------------
+#
+# A session groups the node runs of one workflow execution for providers that keep
+# a single execution unit for the whole run (providers.json ``"scope":
+# "workflow"``). It holds the sandbox id the first node created, so later nodes
+# attach instead of allocating their own. Records live in the same directory as
+# run records and are written by both the gateway and the driver.
+
+
+def new_session_id() -> str:
+    return uuid.uuid4().hex
+
+
+def session_path(root: str | Path, session_id: str) -> Path:
+    return Path(root) / "sessions" / f"{session_id}.json"
+
+
+def create_session(root: str | Path, session_id: str, **fields: Any) -> dict:
+    record = {
+        "session_id": session_id,
+        "status": "open",
+        "sandbox_id": "",
+        "createdAt": _now(),
+        "updatedAt": _now(),
+        **fields,
+    }
+    write_record(session_path(root, session_id), record)
+    return record
+
+
+def read_session(root: str | Path, session_id: str) -> dict | None:
+    if not session_id or "/" in session_id or "\\" in session_id:
+        return None
+    return read_record(session_path(root, session_id))
+
+
+def update_session(root: str | Path, session_id: str, **fields: Any) -> dict | None:
+    path = session_path(root, session_id)
+    record = read_record(path)
+    if record is None:
+        return None
+    record.update(fields)
+    record["updatedAt"] = _now()
+    write_record(path, record)
+    return record
+
+
+def list_sessions(root: str | Path) -> list[dict]:
+    directory = Path(root) / "sessions"
+    if not directory.is_dir():
+        return []
+    records = [read_record(path) for path in directory.glob("*.json")]
+    return [record for record in records if record]
+

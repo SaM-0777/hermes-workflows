@@ -63,6 +63,8 @@ NODE_LIBRARY_PATH = WORKFLOW_DIR / "node-library.json"
 PLUGIN_ROOT = Path(__file__).resolve().parents[1]
 RUNS_DIR = WORKFLOW_DIR / "runs"
 RUNS_DIR.mkdir(parents=True, exist_ok=True)
+SESSIONS_DIR = WORKFLOW_DIR / "sessions"
+SESSIONS_DIR.mkdir(parents=True, exist_ok=True)
 
 _RUNNERS_DIR = PLUGIN_ROOT / "runners"
 if str(_RUNNERS_DIR) not in sys.path:
@@ -86,6 +88,17 @@ class RunRequest(BaseModel):
     runner_options: dict[str, Any] | None = None
     # Known when the studio sends it; used to group runs of one workflow.
     workflow_id: str | None = None
+    # Workflow run session. Present only for providers that keep one sandbox for
+    # the whole run (providers.json "scope": "workflow"); a node then attaches to
+    # the sandbox the first node created instead of allocating its own.
+    session_id: str | None = None
+
+
+class SessionRequest(BaseModel):
+    workflow_id: str | None = None
+    # The workflow's runtime choice; only workflow-scoped providers get a session.
+    runner: str | None = None
+    runner_options: dict[str, Any] | None = None
 
 
 class SourceRequest(BaseModel):
@@ -804,6 +817,133 @@ def _provider_status(provider_id: str) -> dict:
     return {"provider": provider_id, "ready": True, "missing": [], "hints": []}
 
 
+# --- run sessions ---------------------------------------------------------
+#
+# A provider that declares ``"scope": "workflow"`` keeps one sandbox for a whole
+# workflow run. The studio opens a session before the graph starts, every node
+# carries its id, and the first node's driver creates the sandbox and records it.
+# Closing the session terminates that sandbox. Providers without the flag never
+# take this path: their runs are byte-identical to the per-node model.
+
+_TERMINATE_TIMEOUT = 180
+
+
+def _close_session_sync(session_id: str) -> dict | None:
+    """Terminate a session's sandbox and mark the record closed.
+
+    Runs the driver in terminate-only mode, so nothing here imports the provider
+    SDK. A sandbox that is already gone is fine: the record still closes, and the
+    provider's idle timeout is the backstop.
+    """
+    session = runner_base.read_session(WORKFLOW_DIR, session_id)
+    if session is None:
+        return None
+    if session.get("status") == "closed":
+        return session
+
+    provider = str(session.get("provider") or "")
+    sandbox_id = str(session.get("sandbox_id") or "")
+
+    if provider != "modal":
+        return runner_base.update_session(
+            WORKFLOW_DIR, session_id, status="closed", endedAt=runner_base.now()
+        )
+
+    record_path = SESSIONS_DIR / f"{session_id}.terminate.json"
+    request_path = SESSIONS_DIR / f"{session_id}.terminate.request.json"
+    log_path = SESSIONS_DIR / f"{session_id}.terminate.log"
+
+    runner_base.create_record(
+        record_path,
+        session_id=session_id,
+        provider=provider,
+        node_id="terminate",
+        sandboxId=sandbox_id,
+    )
+    runner_base.write_record(
+        request_path,
+        {
+            "mode": "terminate",
+            "provider": provider,
+            "session_id": session_id,
+            "session_path": str(runner_base.session_path(WORKFLOW_DIR, session_id)),
+            "sandbox_id": sandbox_id,
+            "options": session.get("options") or {},
+            "record_path": str(record_path),
+        },
+    )
+
+    failure = ""
+    try:
+        command = modal_runtime.driver_command(request_path)
+        proc = subprocess.run(
+            command,
+            cwd=str(PLUGIN_ROOT),
+            capture_output=True,
+            text=True,
+            encoding="utf-8",
+            errors="replace",
+            timeout=_TERMINATE_TIMEOUT,
+        )
+        try:
+            log_path.write_text(
+                (proc.stdout or "") + (proc.stderr or ""), encoding="utf-8"
+            )
+        except OSError:
+            logger.debug("Could not write %s", log_path)
+        if proc.returncode != 0:
+            failure = (proc.stderr or proc.stdout or "").strip()[-1000:]
+    except Exception as exc:  # noqa: BLE001 - the record carries the reason
+        failure = str(exc)
+
+    if failure:
+        logger.warning("Could not terminate session %s: %s", session_id, failure)
+        runner_base.update_record(
+            record_path, status="failed", phase="failed", error={"message": failure}
+        )
+
+    return runner_base.update_session(
+        WORKFLOW_DIR,
+        session_id,
+        status="closed",
+        endedAt=runner_base.now(),
+        **({"terminateError": failure} if failure else {}),
+    )
+
+
+def _sweep_stale_sessions() -> None:
+    """Close sessions whose sandbox is long past its workflow timeout.
+
+    Bookkeeping only: the sandbox itself is already reaped by its workflow
+    timeout. This keeps the sessions list honest after a studio crash.
+    """
+    now = datetime.now(timezone.utc)
+    for session in runner_base.list_sessions(WORKFLOW_DIR):
+        if session.get("status") != "open":
+            continue
+        created = str(session.get("createdAt") or "")
+        try:
+            started = datetime.fromisoformat(created.replace("Z", "+00:00"))
+        except ValueError:
+            continue
+        options = session.get("options") or {}
+        try:
+            limit = int(options.get("workflowTimeoutSeconds") or 3600) + 600
+        except (TypeError, ValueError):
+            limit = 4200
+        if (now - started).total_seconds() <= limit:
+            continue
+        runner_base.update_session(
+            WORKFLOW_DIR, session["session_id"], status="expired", endedAt=runner_base.now()
+        )
+
+
+try:
+    _sweep_stale_sessions()
+except Exception:  # noqa: BLE001 - never block the API on housekeeping
+    logger.exception("Could not sweep stale workflow sessions")
+
+
 def _submit_remote_node(body: "RunRequest", provider_id: str) -> dict:
     readiness = _provider_status(provider_id)
     if not readiness.get("ready"):
@@ -822,6 +962,47 @@ def _submit_remote_node(body: "RunRequest", provider_id: str) -> dict:
         )
 
     options = runner_base.resolved_options(_PROVIDERS, provider_id, body.runner_options)
+
+    # A session means every node of this run shares one sandbox. The record is
+    # validated here so a stale or foreign id fails before a driver starts.
+    session = None
+    if body.session_id:
+        session = runner_base.read_session(WORKFLOW_DIR, body.session_id)
+        if session is None:
+            raise HTTPException(
+                status_code=404,
+                detail={
+                    "type": "session_not_found",
+                    "message": f"Workflow session {body.session_id} does not exist.",
+                },
+            )
+        if session.get("status") != "open":
+            raise HTTPException(
+                status_code=409,
+                detail={
+                    "type": "session_closed",
+                    "message": (
+                        f"Workflow session {body.session_id} is "
+                        f"{session.get('status')} and cannot accept nodes. "
+                        "Start the workflow again to open a new sandbox."
+                    ),
+                },
+            )
+        if str(session.get("provider") or "") != provider_id:
+            raise HTTPException(
+                status_code=400,
+                detail={
+                    "type": "session_provider_mismatch",
+                    "message": (
+                        f"Session {body.session_id} belongs to the "
+                        f"'{session.get('provider')}' runtime, not '{provider_id}'."
+                    ),
+                },
+            )
+        session_path = runner_base.session_path(WORKFLOW_DIR, body.session_id)
+    else:
+        session_path = None
+
     cap = _PROVIDERS["fileCapBytes"]
     files, rejected = runner_base.plan_uploads([body.parameters, body.inputs], cap)
     if rejected:
@@ -855,6 +1036,12 @@ def _submit_remote_node(body: "RunRequest", provider_id: str) -> dict:
         "files": files,
         "record_path": str(record_path),
     }
+    if session is not None:
+        # The driver reads the session record for the shared sandbox id and
+        # leaves the sandbox running for the next node.
+        request["session_id"] = body.session_id
+        request["session_path"] = str(session_path)
+
     runner_base.write_record(request_path, request)
     runner_base.create_record(
         record_path,
@@ -862,6 +1049,7 @@ def _submit_remote_node(body: "RunRequest", provider_id: str) -> dict:
         provider=provider_id,
         node_id=body.node_id,
         workflow_id=body.workflow_id,
+        session_id=body.session_id or "",
         options=options,
         files={path: meta["sha256"] for path, meta in files.items()},
         logPath=str(log_path),
@@ -890,6 +1078,119 @@ def _submit_remote_node(body: "RunRequest", provider_id: str) -> dict:
     }
 
 
+def _saved_workflow_options(workflow_id: str | None, provider: str) -> dict | None:
+    """Runner options as stored on the workflow, or None when it has none.
+
+    The approval dialog presents the saved workflow, so these are the settings the
+    run is meant to use. A studio whose in-memory state predates the last save would
+    otherwise open the session with stale options.
+    """
+    if not workflow_id:
+        return None
+    try:
+        workflow = _read_json(_workflow_path(workflow_id))
+    except (OSError, ValueError):
+        return None
+    if not isinstance(workflow, dict):
+        return None
+    if str(workflow.get("runner") or "") != provider:
+        return None
+    stored = workflow.get("runnerOptions") or {}
+    if not stored:
+        return None
+    return runner_base.resolved_options(_PROVIDERS, provider, stored)
+
+
+@router.post("/runtime/sessions")
+async def open_session(body: SessionRequest):
+    """Open a workflow run session for a provider that keeps one sandbox.
+
+    Nothing is allocated here: the first node's driver creates the sandbox and
+    records its id, so a run that fails before its first node costs nothing.
+    """
+
+    def _open() -> dict:
+        provider = (body.runner or _runner_name()).strip().lower()
+        if provider not in WORKFLOW_RUNNERS:
+            raise HTTPException(
+                status_code=400,
+                detail={
+                    "type": "validation_error",
+                    "message": f"runner must be one of: {', '.join(WORKFLOW_RUNNERS)}.",
+                },
+            )
+        if not runner_base.workflow_scoped(_PROVIDERS, provider):
+            raise HTTPException(
+                status_code=400,
+                detail={
+                    "type": "runtime_scope_error",
+                    "message": (
+                        f"The '{provider}' runtime runs each node in its own "
+                        "environment, so it has no workflow session to open."
+                    ),
+                },
+            )
+
+        readiness = _provider_status(provider)
+        if not readiness.get("ready"):
+            raise HTTPException(
+                status_code=409,
+                detail={
+                    "type": "runtime_not_configured",
+                    "provider": provider,
+                    "missing": readiness.get("missing", []),
+                    "hints": readiness.get("hints", []),
+                    "message": (
+                        f"The {provider} runtime is not configured yet. "
+                        + " ".join(readiness.get("hints", []))
+                    ),
+                },
+            )
+
+        options = runner_base.resolved_options(_PROVIDERS, provider, body.runner_options)
+        # The saved workflow is what the approval dialog presents, so its runner
+        # options are the ones a session runs with. A studio whose state predates
+        # the last save would otherwise open the sandbox with stale settings.
+        saved = _saved_workflow_options(body.workflow_id, provider)
+        if saved:
+            options = saved
+        session_id = runner_base.new_session_id()
+        record = runner_base.create_session(
+            WORKFLOW_DIR,
+            session_id,
+            workflow_id=body.workflow_id or "",
+            provider=provider,
+            options=options,
+            sandbox_id="",
+        )
+        return {
+            "session_id": session_id,
+            "provider": provider,
+            "status": record.get("status", "open"),
+            "options": options,
+        }
+
+    return await asyncio.to_thread(_open)
+
+
+@router.get("/runtime/sessions")
+async def list_run_sessions():
+    """Session records, newest first — what a reloaded studio re-attaches to."""
+    records = runner_base.list_sessions(WORKFLOW_DIR)
+    records.sort(key=lambda item: item.get("createdAt", ""), reverse=True)
+    return records
+
+
+@router.delete("/runtime/sessions/{session_id}")
+async def close_session(session_id: str):
+    """Terminate the session's sandbox and mark the record closed."""
+    session = runner_base.read_session(WORKFLOW_DIR, session_id)
+    if session is None:
+        raise HTTPException(status_code=404, detail="Session not found")
+    closed = await asyncio.to_thread(_close_session_sync, session_id)
+    return closed or session
+
+
 @router.get("/runtime/providers")
 async def runtime_providers():
     """Descriptors plus live readiness, for the selector and its setup dialog."""
@@ -904,6 +1205,9 @@ async def runtime_providers():
                     "label": entry.get("label", provider_id),
                     "description": entry.get("description", ""),
                     "kind": entry.get("kind", "builtin"),
+                    # "workflow" = one execution unit for the whole run; the
+                    # studio opens a session and every node joins it.
+                    "scope": str(entry.get("scope") or "node"),
                     "needsSetup": bool(entry.get("needsSetup")),
                     "defaults": entry.get("defaults", {}),
                     "options": entry.get("options", []),
@@ -961,6 +1265,13 @@ async def cancel_run(run_id: str):
     updated = runner_base.update_record(
         record_path, status="cancelled", phase="cancelled", endedAt=runner_base.now()
     )
+
+    # A cancelled node ends the run, so its shared sandbox must go too; otherwise
+    # the rest of the workflow would keep a session that no longer has a parent.
+    session_id = str(record.get("session_id") or "")
+    if session_id:
+        await asyncio.to_thread(_close_session_sync, session_id)
+
     return updated or record
 
 

@@ -221,6 +221,7 @@ export async function runNode(
   inputs: Record<string, unknown> = {},
   runner?: WorkflowRunner,
   runnerOptions?: Record<string, unknown>,
+  sessionId?: string | null,
 ): Promise<Record<string, unknown>> {
   const code = node.data.execution?.pythonCode;
   if (!code?.trim()) {
@@ -232,16 +233,23 @@ export async function runNode(
   // polls the record, so one node may take hours without holding a request open.
   // `parameters` carries the node's declared defaults, resolved once here, so
   // build_output receives them instead of an empty dict.
+  //
+  // `session_id` is present only for a runtime that keeps one sandbox for the
+  // whole run: the node then joins the sandbox the first node created instead of
+  // allocating its own. Per-node runtimes never send it.
+  const body: Record<string, unknown> = {
+    node_id: node.id,
+    code,
+    inputs,
+    parameters: resolveParameters(node.data),
+    runner,
+    runner_options: runnerOptions,
+  };
+  if (sessionId) body.session_id = sessionId;
+
   const result = await hostRest<Record<string, unknown>>("/run", {
     method: "POST",
-    body: {
-      node_id: node.id,
-      code,
-      inputs,
-      parameters: resolveParameters(node.data),
-      runner,
-      runner_options: runnerOptions,
-    },
+    body,
   });
 
   if (isRecord(result) && typeof result.run_id === "string") {
