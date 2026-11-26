@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useState } from "react";
 import { hostRest } from "@/lib/host";
-import type { NodeData } from "@/lib/node";
+import { normalizeNodeData, type NodeData } from "@/lib/node";
 
 export interface SavedNode {
   id: string;
@@ -35,7 +35,12 @@ export function useStorage(): UseStorageReturn {
         throw new Error("Invalid node library response");
       }
 
-      setNodes(response);
+      setNodes(
+        response.map((entry) => ({
+          ...entry,
+          data: entry.data ? normalizeNodeData(entry.data) : entry.data,
+        })),
+      );
       setError(null);
     } catch (err) {
       setError(
@@ -47,13 +52,14 @@ export function useStorage(): UseStorageReturn {
   }, []);
 
   useEffect(() => {
+    // eslint-disable-next-line react-hooks/set-state-in-effect
     void refresh();
   }, [refresh]);
 
   const saveNode = useCallback(async (data: NodeData) => {
     const node = await hostRest<SavedNode>("/node-library/nodes", {
       method: "POST",
-      body: { data },
+      body: { data: normalizeNodeData(data) },
     });
 
     if (!node) {
@@ -68,7 +74,7 @@ export function useStorage(): UseStorageReturn {
   const updateNode = useCallback(async (id: string, data: NodeData) => {
     const node = await hostRest<SavedNode>(`/node-library/nodes/${id}`, {
       method: "PUT",
-      body: { data },
+      body: { data: normalizeNodeData(data) },
     });
 
     if (!node) {

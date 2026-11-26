@@ -19,7 +19,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from "../ui/select";
-import { Textarea } from "../ui/textarea";
+import { ParameterValueField } from "../node-fields";
 
 interface ConfigTabProps {
   values?: ConfigFormValues;
@@ -67,7 +67,7 @@ export function ConfigTab({ values, onChange, onSubmit }: ConfigTabProps) {
               onClick={() => {
                 append({
                   name: "",
-                  type: "String",
+                  type: "Text",
                   defaultValue: "",
                 });
                 notifyChange();
@@ -126,9 +126,6 @@ function ParameterRow({
     control,
     name: `parameters.${index}.type`,
   });
-  const isStructured = type === "Object" || type === "Array" || type === "Any";
-  const isMedia = ["Image", "Audio", "Video", "File"].includes(type);
-
   return (
     <div className="rounded-sm border bg-card p-3">
       <div className="mb-3 flex items-center justify-between">
@@ -149,27 +146,29 @@ function ParameterRow({
       </div>
 
       <div className="space-y-3">
-        <Controller
-          name={`parameters.${index}.name`}
-          control={control}
-          render={({ field, fieldState }) => (
-            <Field data-invalid={fieldState.invalid}>
-              <FieldLabel>Name</FieldLabel>
-              <Input
-                placeholder="e.g. temperature"
-                autoComplete="off"
-                {...field}
-                onChange={(event) => {
-                  field.onChange(event);
-                  onChange();
-                }}
-              />
-              {fieldState.invalid && <FieldError errors={[fieldState.error]} />}
-            </Field>
-          )}
-        />
+        <div className="grid sm:grid-cols-2 gap-3">
+          <Controller
+            name={`parameters.${index}.name`}
+            control={control}
+            render={({ field, fieldState }) => (
+              <Field data-invalid={fieldState.invalid}>
+                <FieldLabel>Name</FieldLabel>
+                <Input
+                  placeholder="e.g. temperature"
+                  autoComplete="off"
+                  {...field}
+                  onChange={(event) => {
+                    field.onChange(event);
+                    onChange();
+                  }}
+                />
+                {fieldState.invalid && (
+                  <FieldError errors={[fieldState.error]} />
+                )}
+              </Field>
+            )}
+          />
 
-        <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
           <Controller
             name={`parameters.${index}.type`}
             control={control}
@@ -195,7 +194,7 @@ function ParameterRow({
                     align="start"
                     alignItemWithTrigger={false}
                     sideOffset={4}
-                    className="rounded-sm"
+                    className="rounded-sm w-full"
                   >
                     {dataTypes.map((type) => (
                       <SelectItem
@@ -214,70 +213,28 @@ function ParameterRow({
               </Field>
             )}
           />
+        </div>
 
+        <div className="">
           <Controller
             name={`parameters.${index}.defaultValue`}
             control={control}
             render={({ field, fieldState }) => (
-              <Field data-invalid={fieldState.invalid}>
+              <Field
+                data-invalid={fieldState.invalid}
+                className="sm:col-span-2"
+              >
                 <FieldLabel>Default value</FieldLabel>
 
-                {type === "Boolean" ? (
-                  <Select
-                    value={field.value}
-                    onValueChange={(value) => {
-                      field.onChange(value);
-                      onChange();
-                    }}
-                  >
-                    <SelectTrigger>
-                      <SelectValue placeholder="Select value" />
-                    </SelectTrigger>
-                    <SelectContent
-                      side="bottom"
-                      align="start"
-                      alignItemWithTrigger={false}
-                      sideOffset={4}
-                      className={"rounded-sm"}
-                    >
-                      <SelectItem value="true">True</SelectItem>
-                      <SelectItem value="false">False</SelectItem>
-                    </SelectContent>
-                  </Select>
-                ) : isStructured ? (
-                  <Textarea
-                    placeholder={
-                      type === "Object"
-                        ? '{"key": "value"}'
-                        : type === "Array"
-                          ? '["item1", "item2"]'
-                          : "Enter a default value..."
-                    }
-                    className="min-h-9 resize-y"
-                    {...field}
-                    onChange={(event) => {
-                      field.onChange(event);
-                      onChange();
-                    }}
-                  />
-                ) : (
-                  <Input
-                    placeholder={
-                      isMedia
-                        ? "No default value"
-                        : type === "Number"
-                          ? "e.g. 0.7"
-                          : "Enter a value..."
-                    }
-                    disabled={isMedia}
-                    type={type === "Number" ? "number" : "text"}
-                    {...field}
-                    onChange={(event) => {
-                      field.onChange(event);
-                      onChange();
-                    }}
-                  />
-                )}
+                <ParameterValueField
+                  type={type}
+                  value={field.value}
+                  invalid={fieldState.invalid}
+                  onChange={(value) => {
+                    field.onChange(value);
+                    onChange();
+                  }}
+                />
 
                 {fieldState.invalid && (
                   <FieldError errors={[fieldState.error]} />

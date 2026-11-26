@@ -1,85 +1,48 @@
 DATA_TYPES = [
-    "Any",
-    "String",
-    "Number",
-    "Boolean",
-    "Object",
-    "Array",
-    "Image",
-    "Audio",
-    "Video",
-    "File",
+    "Text",
+    "Dataset",
+    "Images",
+    "Videos",
+    "Audios",
+    "JSON",
 ]
 
 # Schemas
 
-# Partial Correct:
+# Per-type defaultValue encoding. The persisted defaultValue is always a string
+# whose content encodes the selected type (see CONFIG_SCHEMA).
 OneOf = [
     {
         "properties": {
-            "type": {"const": "String"},
+            "type": {"const": "Text"},
             "defaultValue": {"type": "string"},
         },
         "required": ["type", "defaultValue"],
     },
     {
         "properties": {
-            "type": {"const": "Number"},
-            "defaultValue": {"type": "number"},
-        },
-        "required": ["type", "defaultValue"],
-    },
-    {
-        "properties": {
-            "type": {"const": "Boolean"},
-            "defaultValue": {"type": "boolean"},
-        },
-        "required": ["type", "defaultValue"],
-    },
-    {
-        "properties": {
-            "type": {"const": "Object"},
-            "defaultValue": {"type": "object"},
-        },
-        "required": ["type", "defaultValue"],
-    },
-    {
-        "properties": {
-            "type": {"const": "Array"},
-            "defaultValue": {"type": "array"},
-        },
-        "required": ["type", "defaultValue"],
-    },
-    {
-        "properties": {
-            "type": {"const": "Any"},
-        },
-        "required": ["type", "defaultValue"],
-    },
-    {
-        "properties": {
-            "type": {"const": "Image"},
+            "type": {"const": "Dataset"},
             "defaultValue": {"type": "string"},
         },
         "required": ["type", "defaultValue"],
     },
     {
         "properties": {
-            "type": {"const": "Audio"},
+            "type": {"const": "Images"},
             "defaultValue": {"type": "string"},
         },
         "required": ["type", "defaultValue"],
     },
     {
         "properties": {
-            "type": {"const": "Video"},
+            "type": {"const": "Videos"},
             "defaultValue": {"type": "string"},
         },
         "required": ["type", "defaultValue"],
     },
     {
         "properties": {
-            "type": {"const": "File"},
+            "type": {"const": "Audios"},
             "defaultValue": {"type": "string"},
         },
         "required": ["type", "defaultValue"],
@@ -182,11 +145,9 @@ CONFIG_SCHEMA = {
                         "description": (
                             "Default value for this parameter, provided as a string. "
                             "Its actual value must match the selected parameter type. "
-                            "Examples: type='Number', defaultValue='5'; "
-                            "type='Boolean', defaultValue='true'; "
-                            "type='String', defaultValue='hello'; "
-                            "type='Array', defaultValue='[1, 2, 3]'; "
-                            "type='Object', defaultValue='{\"key\": \"value\"}'."
+                            "Examples: type='Text', defaultValue='hello'; "
+                            "type='Dataset', defaultValue='/data/mnist'; "
+                            "type='Images', defaultValue='[\"/data/a.png\"]'."
                         ),
                     },
                 },
@@ -580,12 +541,14 @@ ADD_WORKFLOW_EDGE = {
     "name": "add_workflow_edge",
     "description": (
         "Connect two nodes in an existing workflow by creating an edge. "
-        "Provide the workflow ID, source node ID, source output handle name, "
-        "target node ID, and target input handle name. "
-        "The source handle must exist in the source node's io.outputs, "
-        "and the target handle must exist in the target node's io.inputs. "
-        "Their data types must match exactly. "
-        "An edge is created only when both handles exist and their types match."
+        "Data edge (kind='data', the default): provide the workflow ID, source node "
+        "ID, source output handle name, target node ID, and target input handle name; "
+        "the handles must exist in the nodes' io.outputs and io.inputs and their data "
+        "types must match exactly. "
+        "Control edge (kind='control'): pass source_handle 'flow' and target_handle "
+        "'then'. It carries no value and only orders the target after the source, so a "
+        "node with no outputs can still chain into the next node. "
+        "Both kinds accept an optional label shown on the canvas."
     ),
     "parameters": {
         "type": "object",
@@ -602,7 +565,7 @@ ADD_WORKFLOW_EDGE = {
                 "type": "string",
                 "description": (
                     "Exact name of an output port from the source node's "
-                    "data.io.outputs array."
+                    "data.io.outputs array, or 'flow' for a control edge."
                 ),
             },
             "target_node_id": {
@@ -613,7 +576,24 @@ ADD_WORKFLOW_EDGE = {
                 "type": "string",
                 "description": (
                     "Exact name of an input port from the target node's "
-                    "data.io.inputs array. Its type must match the source output type."
+                    "data.io.inputs array (its type must match the source output "
+                    "type), or 'then' for a control edge."
+                ),
+            },
+            "kind": {
+                "type": "string",
+                "enum": ["data", "control"],
+                "description": (
+                    "'data' carries a value between ports; 'control' carries nothing "
+                    "and only orders execution. Inferred from the handles when omitted: "
+                    "flow/then means control."
+                ),
+            },
+            "label": {
+                "type": "string",
+                "maxLength": 80,
+                "description": (
+                    "Optional name shown on the canvas edge, for either kind."
                 ),
             },
         },

@@ -1,8 +1,10 @@
 import {
+  isRecord,
   type WorkflowDocument,
   type WorkflowEdge,
   type WorkflowNode,
 } from "./workflow-validation";
+import { normalizeNodeData, type NodeData } from "../../../lib/node";
 
 export type WorkflowRest = <T = unknown>(
   path: string,
@@ -43,19 +45,37 @@ export async function saveWorkflow(
     method: "PUT",
     body: {
       name: input.name,
-      nodes: input.nodes,
+      // Store the current vocabulary even when the caller still holds old types.
+      nodes: input.nodes.map(normalizeStoredNode),
       edges: input.edges,
     },
   })) as WorkflowDocument;
+}
+
+/** Resolve stored port and parameter types onto the current vocabulary. */
+function normalizeStoredData<TData>(data: TData): TData {
+  if (!isRecord(data)) return data;
+
+  return normalizeNodeData(data as unknown as NodeData) as TData;
+}
+
+/** Resolve a stored node's port and parameter types onto the current vocabulary. */
+function normalizeStoredNode(node: WorkflowNode): WorkflowNode {
+  if (!isRecord(node)) return node;
+
+  return { ...node, data: normalizeStoredData(node.data) };
 }
 
 export async function loadWorkflow(
   rest: WorkflowRest,
   id: string,
 ): Promise<WorkflowDocument> {
-  return (await rest(`/workflows/${id}`, {
+  const document = (await rest(`/workflows/${id}`, {
     method: "GET",
   })) as WorkflowDocument;
+
+  // Stored documents may predate the current type vocabulary.
+  return { ...document, nodes: document.nodes.map(normalizeStoredNode) };
 }
 
 export async function deleteWorkflow(
@@ -87,9 +107,19 @@ export async function writeNodeLibrary<TData>(
 export async function readNodeLibrary<TData = unknown>(
   rest: WorkflowRest,
 ): Promise<SavedNode<TData>[]> {
-  return (await rest("/node-library", {
+  const nodes = (await rest("/node-library", {
     method: "GET",
   })) as SavedNode<TData>[];
+
+  // Saved nodes may predate the current type vocabulary.
+  return nodes.map((node) =>
+    isRecord(node.data)
+      ? {
+          ...node,
+          data: normalizeNodeData(node.data as unknown as NodeData) as TData,
+        }
+      : node,
+  );
 }
 
 export async function saveLibraryNode<TData>(
@@ -98,7 +128,7 @@ export async function saveLibraryNode<TData>(
 ): Promise<SavedNode<TData>> {
   return (await rest("/node-library/nodes", {
     method: "POST",
-    body: { data },
+    body: { data: normalizeStoredData(data) },
   })) as SavedNode<TData>;
 }
 
@@ -109,7 +139,7 @@ export async function updateLibraryNode<TData>(
 ): Promise<SavedNode<TData>> {
   return (await rest(`/node-library/nodes/${id}`, {
     method: "PUT",
-    body: { data },
+    body: { data: normalizeStoredData(data) },
   })) as SavedNode<TData>;
 }
 

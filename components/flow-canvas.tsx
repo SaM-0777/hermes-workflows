@@ -5,6 +5,7 @@ import {
   BackgroundVariant,
   Controls,
   MiniMap,
+  Position,
   ReactFlow,
   useEdgesState,
   useNodesState,
@@ -17,11 +18,21 @@ import {
 } from "@xyflow/react";
 import { Code2, Play, Save, Square, Trash2 } from "lucide-react";
 import type { NodeData, WorkflowNode, WorkflowRuntimeState } from "@/lib/node";
+import {
+  CONTROL_EDGE_KIND,
+  CONTROL_IN_HANDLE,
+  CONTROL_OUT_HANDLE,
+  edgeStyleFor,
+  isControlHandlePair,
+  touchesControlHandle,
+  type WorkflowEdge,
+} from "@/lib/control-flow";
 import { NodeWidget } from "./node-widget";
 import { BaseNode } from "./base-node";
+import { EdgeNameDialog } from "./edge-name-dialog";
 import { Button } from "./ui/button";
 import DeleteWorkflow from "./delete-flow";
-import { buildFlowGraph } from "@/lib/flow-graph";
+import { buildFlowGraph, WORKFLOW_RECURSION_LIMIT } from "@/lib/flow-graph";
 import { getWorkflowId } from "@/lib/host";
 import { saveWorkflow, loadWorkflow } from "@/lib/workflow";
 import {
@@ -30,9 +41,12 @@ import {
 } from "@/providers/workflow-provider";
 import { toast } from "sonner";
 import { WorkflowApprovalDialog } from "./approval-dialog";
+import { normalizeEdges } from "@/lib/edge";
 
 function WorkflowBaseNode({ id, data, selected }: NodeProps<WorkflowNode>) {
   const runtime = useNodeRuntimeState(id);
+  // Control-flow handles exist on every node regardless of its ports, so a node
+  // with no outputs can still order what runs after it: flow (out) -> then (in).
   return (
     <BaseNode
       id={id}
@@ -42,6 +56,24 @@ function WorkflowBaseNode({ id, data, selected }: NodeProps<WorkflowNode>) {
       status={runtime?.status ?? "idle"}
       runtimeInputs={runtime?.inputs}
       runtimeOutput={runtime?.output}
+      handles={[
+        {
+          id: CONTROL_IN_HANDLE,
+          type: "target",
+          position: Position.Left,
+          style: { top: 18 },
+          className: "size-2.5! rounded-sm! bg-slate-500! hover:bg-slate-300!",
+          title: "Control in — this node runs after the upstream node",
+        },
+        {
+          id: CONTROL_OUT_HANDLE,
+          type: "source",
+          position: Position.Right,
+          style: { top: 18 },
+          className: "size-2.5! rounded-sm! bg-slate-500! hover:bg-slate-300!",
+          title: "Control out — run the next node after this one finishes",
+        },
+      ]}
     />
   );
 }
@@ -54,12 +86,13 @@ export default function FlowCanvas({ runNonce = 0 }: { runNonce?: number }) {
   const [workflowId, setWorkflowId] = useState<string | null>(null);
   const { screenToFlowPosition, getNode } = useReactFlow<WorkflowNode, Edge>();
   const [nodes, setNodes, onNodesChange] = useNodesState<WorkflowNode>([]);
-  const [edges, setEdges, onEdgesChange] = useEdgesState<Edge>([]);
+  const [edges, setEdges, onEdgesChange] = useEdgesState<WorkflowEdge>([]);
   const [isRunning, setIsRunning] = useState(false);
   const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
   const [isSaving, setIsSaving] = useState(false);
   const [runtimeState, setRuntimeState] = useState<WorkflowRuntimeState>({});
   const [pendingApproval, setPendingApproval] = useState<boolean>(false);
+  const [renamingEdge, setRenamingEdge] = useState<WorkflowEdge | null>(null);
 
   const isValidConnection: IsValidConnection<Edge> = useCallback(
     (connection) => {
@@ -71,6 +104,17 @@ export default function FlowCanvas({ runNonce = 0 }: { runNonce?: number }) {
         connection.source === connection.target
       ) {
         return false;
+      }
+
+      // Control edges are flow -> then and nothing else: they carry no value, so
+      // no port lookup applies, and a data port may never borrow these handles.
+      const controlSource = touchesControlHandle(connection.sourceHandle);
+      const controlTarget = touchesControlHandle(connection.targetHandle);
+      if (controlSource || controlTarget) {
+        return isControlHandlePair(
+          connection.sourceHandle,
+          connection.targetHandle,
+        );
       }
 
       const sourceNode = getNode(connection.source);
@@ -86,26 +130,26 @@ export default function FlowCanvas({ runNonce = 0 }: { runNonce?: number }) {
 
       if (!output || !input) return false;
 
-      return (
-        output.type === "Any" ||
-        input.type === "Any" ||
-        output.type === input.type
-      );
+      // Types must match exactly; the old `Any` wildcard no longer exists.
+      return output.type === input.type;
     },
     [getNode],
   );
 
   const onConnect = useCallback(
     (connection: Connection) => {
+      const control = isControlHandlePair(
+        connection.sourceHandle,
+        connection.targetHandle,
+      );
+
       setEdges((currentEdges) =>
-        addEdge(
+        addEdge<WorkflowEdge>(
           {
             ...connection,
-            animated: true,
-            style: {
-              stroke: "#64748b",
-              strokeWidth: 2,
-            },
+            kind: control ? CONTROL_EDGE_KIND : "data",
+            animated: false,
+            style: edgeStyleFor(control ? CONTROL_EDGE_KIND : "data"),
           },
           currentEdges,
         ),
@@ -134,7 +178,7 @@ export default function FlowCanvas({ runNonce = 0 }: { runNonce?: number }) {
     [screenToFlowPosition, setNodes],
   );
 
-  // The page hands the workflow id down; load it once, straight from the backend.
+  // The page hands the workflow id down; load it from the backend.
   useEffect(() => {
     const id = getWorkflowId();
     if (!id) return;
@@ -147,7 +191,7 @@ export default function FlowCanvas({ runNonce = 0 }: { runNonce?: number }) {
       .then((workflow) => {
         if (!active) return;
         setNodes(workflow.nodes as WorkflowNode[]);
-        setEdges(workflow.edges);
+        setEdges(normalizeEdges(workflow.edges as WorkflowEdge[]));
       })
       .catch((error) => {
         if (!active) return;
@@ -185,7 +229,10 @@ export default function FlowCanvas({ runNonce = 0 }: { runNonce?: number }) {
             [nodeId]: state,
           }));
         });
-        await graph.invoke({ results: {} });
+        await graph.invoke(
+          { results: {} },
+          { recursionLimit: WORKFLOW_RECURSION_LIMIT },
+        );
       } catch (error) {
         console.error("Workflow failed:", error);
         toast.error(
@@ -208,7 +255,7 @@ export default function FlowCanvas({ runNonce = 0 }: { runNonce?: number }) {
     void loadWorkflow(id)
       .then((workflow) => {
         setNodes(workflow.nodes as WorkflowNode[]);
-        setEdges(workflow.edges);
+        setEdges(normalizeEdges(workflow.edges as WorkflowEdge[]));
         setPendingApproval(true);
       })
       .catch((error) => {
@@ -260,17 +307,16 @@ export default function FlowCanvas({ runNonce = 0 }: { runNonce?: number }) {
           nodeTypes={nodeTypes}
           onNodesChange={onNodesChange}
           onEdgesChange={onEdgesChange}
+          onEdgeDoubleClick={(_, edge) => setRenamingEdge(edge as WorkflowEdge)}
           deleteKeyCode={["Backspace", "Delete"]}
           edgesFocusable
+          elementsSelectable
           onConnect={onConnect}
           isValidConnection={isValidConnection}
           defaultEdgeOptions={{
             type: "smoothstep",
-            animated: true,
-            style: {
-              stroke: "#64748b",
-              strokeWidth: 2,
-            },
+            animated: false,
+            style: edgeStyleFor("data"),
           }}
           fitView
           fitViewOptions={{ padding: 0.3 }}
@@ -326,17 +372,35 @@ export default function FlowCanvas({ runNonce = 0 }: { runNonce?: number }) {
             >
               <Save className="size-3.5" />
             </Button>
-            <Button
-              size="sm"
-              onClick={handleDelete}
-              className="gap-2 "
-            >
+            <Button size="sm" onClick={handleDelete} className="gap-2 ">
               <Trash2 className="size-3.5 stroke-destructive" />
             </Button>
           </Panel>
         </ReactFlow>
 
         <NodeWidget onAddNode={onAddNode} />
+
+        <EdgeNameDialog
+          key={renamingEdge?.id ?? "no-edge"}
+          open={renamingEdge !== null}
+          initial={renamingEdge?.label ?? ""}
+          kind={renamingEdge?.kind === CONTROL_EDGE_KIND ? "control" : "data"}
+          onOpenChange={(open) => {
+            if (!open) setRenamingEdge(null);
+          }}
+          onSubmit={(name) => {
+            if (!renamingEdge) return;
+            const targetId = renamingEdge.id;
+            setEdges((current) =>
+              current.map((edge) =>
+                edge.id === targetId
+                  ? { ...edge, label: name || undefined }
+                  : edge,
+              ),
+            );
+            setRenamingEdge(null);
+          }}
+        />
 
         <DeleteWorkflow
           open={deleteDialogOpen}

@@ -13,17 +13,38 @@ export const categories = [
 ] as const;
 
 export const dataTypes = [
-  "Any",
-  "String",
-  "Number",
-  "Boolean",
-  "Object",
-  "Array",
-  "Image",
-  "Audio",
-  "Video",
-  "File",
+  "Text",
+  "Dataset",
+  "Images",
+  "Videos",
+  "Audios",
+  "JSON",
 ] as const;
+
+/**
+ * Types that documents saved before the vocabulary was narrowed still carry.
+ * Mapped when a document is loaded, so stored files stay readable as written.
+ * `File` has no successor and is kept exactly as stored.
+ */
+const legacyDataTypes: Record<string, (typeof dataTypes)[number]> = {
+  Any: "Text",
+  String: "Text",
+  Number: "Text",
+  Boolean: "Text",
+  Object: "JSON",
+  Array: "JSON",
+  Image: "Images",
+  Video: "Videos",
+  Audio: "Audios",
+};
+
+/** A stored port or parameter type resolved to one this studio can edit. */
+export function normalizeDataType(value: unknown): string {
+  if (typeof value !== "string" || value.length === 0) return "Text";
+  if ((dataTypes as readonly string[]).includes(value)) return value;
+
+  return legacyDataTypes[value] ?? value;
+}
 
 export function getPortValue(
   values: unknown,
@@ -142,6 +163,40 @@ export type NodeData = {
 };
 export type WorkflowNode = Node<NodeData>;
 
+type PortType = IoFormValues["inputs"][number]["type"];
+
+/**
+ * Resolve every port and parameter type in a loaded node onto the current
+ * vocabulary. Values, names, positions and execution code are left alone.
+ */
+export function normalizeNodeData(data: NodeData): NodeData {
+  const io = data.io
+    ? {
+        ...data.io,
+        inputs: data.io.inputs.map((port) => ({
+          ...port,
+          type: normalizeDataType(port.type) as PortType,
+        })),
+        outputs: data.io.outputs.map((port) => ({
+          ...port,
+          type: normalizeDataType(port.type) as PortType,
+        })),
+      }
+    : data.io;
+
+  const config = data.config
+    ? {
+        ...data.config,
+        parameters: data.config.parameters.map((parameter) => ({
+          ...parameter,
+          type: normalizeDataType(parameter.type) as PortType,
+        })),
+      }
+    : data.config;
+
+  return { ...data, io, config };
+}
+
 export function isRecord(value: unknown): value is Record<string, unknown> {
   return value !== null && typeof value === "object" && !Array.isArray(value);
 }
@@ -167,12 +222,17 @@ export async function runNode(
 
   // The backend runs the node in an execute_code kernel child; this returns its
   // {node_id, status, output} envelope or throws with the child's message.
+  // `parameters` carries the node's declared defaults, resolved once here, so
+  // build_output receives them instead of an empty dict.
   const result = await hostRest<Record<string, unknown>>("/run", {
     method: "POST",
+    // A design node calls the agent, so the node outlives the app's 30s default.
+    timeoutMs: 600_000,
     body: {
       node_id: node.id,
       code,
       inputs,
+      parameters: node.data,
     },
   });
 

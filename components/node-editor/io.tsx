@@ -62,7 +62,7 @@ export function IoTab({ values, onChange, onSubmit }: IoTabProps) {
             variant="outline"
             size="sm"
             onClick={() => {
-              append({ name: "", type: "Any" });
+              append({ name: "", type: "Text" });
             }}
           >
             <Plus className="mr-1 size-3.5" />

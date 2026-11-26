@@ -88,7 +88,8 @@ function collectImageReferences(
 
   if (typeof value === "object") {
     const url = getUrl(value);
-    const contentType = readString(value, "content_type") ?? readString(value, "contentType");
+    const contentType =
+      readString(value, "content_type") ?? readString(value, "contentType");
     const looksLikeImage =
       typeof url === "string" &&
       (isImageUrl(url) ||
@@ -150,13 +151,39 @@ function ImageGallery({
 function ValueContent({ type, value }: { type: string; value: unknown }) {
   const normalizedType = type.toLowerCase();
 
-  if (normalizedType === "string" || normalizedType === "text") {
+  if (
+    normalizedType === "string" ||
+    normalizedType === "text" ||
+    normalizedType === "json"
+  ) {
     if (typeof value === "string" && isImageUrl(value)) {
       return (
         <div className="space-y-2">
-          <ImageGallery references={[{ url: value, label: "" }]} emptyLabel="" />
-          <p className="wrap-break-word text-xs text-muted-foreground">{value}</p>
+          <ImageGallery
+            references={[{ url: value, label: "" }]}
+            emptyLabel=""
+          />
+          <p className="wrap-break-word text-xs text-muted-foreground">
+            {value}
+          </p>
         </div>
+      );
+    }
+    if (normalizedType === "json") {
+      let text: string;
+      try {
+        text = JSON.stringify(
+          typeof value === "string" ? JSON.parse(value) : value,
+          null,
+          2,
+        );
+      } catch {
+        text = String(value);
+      }
+      return (
+        <pre className="max-h-64 overflow-auto whitespace-pre-wrap wrap-break-word font-mono text-xs leading-relaxed">
+          {text}
+        </pre>
       );
     }
     return (
@@ -175,7 +202,7 @@ function ValueContent({ type, value }: { type: string; value: unknown }) {
   if (normalizedType === "boolean") {
     return <p className="text-sm font-medium">{value ? "True" : "False"}</p>;
   }
-  if (normalizedType === "image") {
+  if (normalizedType === "image" || normalizedType === "images") {
     const url = getUrl(value);
     return url ? (
       <img
@@ -188,7 +215,7 @@ function ValueContent({ type, value }: { type: string; value: unknown }) {
     );
   }
 
-  if (normalizedType === "video") {
+  if (normalizedType === "video" || normalizedType === "videos") {
     const url = getUrl(value);
     return url ? (
       <video src={url} controls className="max-h-64 w-full rounded-md" />
@@ -197,7 +224,7 @@ function ValueContent({ type, value }: { type: string; value: unknown }) {
     );
   }
 
-  if (normalizedType === "audio") {
+  if (normalizedType === "audio" || normalizedType === "audios") {
     const url = getUrl(value);
     return url ? (
       <audio src={url} controls className="w-full" />

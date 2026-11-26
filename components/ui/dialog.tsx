@@ -4,7 +4,7 @@ import { cn } from "cn"
 
 import { Button } from "@/components/ui/button"
 import { XIcon } from "lucide-react"
-import { useStudioPortalContainer } from "@/lib/studio-portal"
+import { useStudioPortalContainer } from "@/providers/studio-portal-provider"
 
 function Dialog({ ...props }: DialogPrimitive.Root.Props) {
   return <DialogPrimitive.Root data-slot="dialog" {...props} />

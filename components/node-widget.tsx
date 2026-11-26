@@ -1,4 +1,10 @@
-import { useCallback, useMemo, useRef, type DragEvent, type PointerEvent } from "react";
+import {
+  useCallback,
+  useMemo,
+  useRef,
+  type DragEvent,
+  type PointerEvent,
+} from "react";
 import { cn } from "@/lib/utils";
 import { Card, CardContent, CardHeader } from "./ui/card";
 import { useState } from "react";
@@ -131,8 +137,8 @@ export function NodeWidget({ onAddNode }: NodeWidgetProps) {
     // Clamp to the canvas, not the window: the widget is absolute inside it.
     // `currentTarget` is the header, whose offsetParent is the (positioned) card —
     // measure the canvas from the card itself, whose offsetParent is the canvas.
-    const canvas = (cardRef.current?.offsetParent as HTMLElement | null)
-      ?? document.body;
+    const canvas =
+      (cardRef.current?.offsetParent as HTMLElement | null) ?? document.body;
     updatePosition({
       x: Math.max(0, Math.min(canvas.clientWidth - width, nextX)),
       y: Math.max(0, Math.min(canvas.clientHeight - height, nextY)),
@@ -221,26 +227,6 @@ export function NodeWidget({ onAddNode }: NodeWidgetProps) {
               {mode === "expanded" ? "Compact view" : "Expanded view"}
             </TooltipContent>
           </Tooltip>
-          {/*<Tooltip>
-            <TooltipTrigger onClick={() => changeMode("minimized")}>
-              <Minus className="size-3.5" />
-            </TooltipTrigger>
-            <TooltipContent>Minimize</TooltipContent>
-          </Tooltip>*/}
-          {/*<Tooltip>
-            <TooltipTrigger>
-              <Button
-                type="button"
-                variant="ghost"
-                size="icon-sm"
-                className="size-7"
-                onClick={onClose}
-              >
-                <X className="size-3.5" />
-              </Button>
-            </TooltipTrigger>
-            <TooltipContent>Close</TooltipContent>
-          </Tooltip>*/}
         </div>
       </CardHeader>
 

@@ -1,7 +1,7 @@
-import { useMemo, useState, type ReactNode } from "react";
+import { useMemo, useState, type CSSProperties, type ReactNode } from "react";
 import { Edit, Trash2, type LucideIcon } from "lucide-react";
 import { cva } from "class-variance-authority";
-import { useReactFlow, Handle, type NodeHandle, Position } from "@xyflow/react";
+import { useReactFlow, Handle, Position } from "@xyflow/react";
 import { cn } from "@/lib/utils";
 import {
   Card,
@@ -16,6 +16,43 @@ import { getPortValue, type NodeData, type NodeStatus } from "@/lib/node";
 import { NodeEditor } from "./node-editor";
 import { NodeValue } from "./node-value";
 
+/**
+ * One-line summary of a parameter's default for the node card: a file list shows
+ * its names, JSON collapses to one line, everything else is the raw text.
+ */
+function summarizeDefault(type: string, value: string): string {
+  if (!value.trim()) return "Not set";
+
+  if (
+    type === "Images" ||
+    type === "Videos" ||
+    type === "Audios" ||
+    type === "Files"
+  ) {
+    //
+  }
+
+  if (type === "JSON") {
+    try {
+      return JSON.stringify(JSON.parse(value), null, 2);
+    } catch {
+      return value;
+    }
+  }
+
+  return value;
+}
+
+/** An extra handle rendered on the card itself (control-flow in/out). */
+export interface NodeExtraHandle {
+  id: string;
+  type: "source" | "target";
+  position?: Position;
+  style?: CSSProperties;
+  className?: string;
+  title?: string;
+}
+
 export interface BaseNodeProps {
   id: string;
   data: NodeData;
@@ -23,7 +60,7 @@ export interface BaseNodeProps {
   status?: NodeStatus;
   selected?: boolean;
   children?: ReactNode;
-  handles?: NodeHandle[];
+  handles?: NodeExtraHandle[];
   className?: string;
   runtimeInputs?: Record<string, unknown>;
   runtimeOutput?: unknown;
@@ -102,12 +139,17 @@ export function BaseNode({
         {handles.map((handle) => (
           <Handle
             key={handle.id}
+            {...handle}
             id={handle.id}
             type={handle.type}
             position={
-              handle.position ?? (handle.type === "target" ? "left" : "right")
+              handle.position ??
+              (handle.type === "target" ? Position.Left : Position.Right)
             }
-            className="size-3 border-2 border-background bg-muted-foreground transition-colors hover:bg-blue-500"
+            className={cn(
+              "size-3 border-2 border-background bg-muted-foreground transition-colors hover:bg-blue-500",
+              handle.className,
+            )}
           />
         ))}
 
@@ -136,18 +178,6 @@ export function BaseNode({
             </div>
 
             <div className="flex items-center gap-1">
-              {/*<Button
-                type="button"
-                variant="ghost"
-                size="icon"
-                className="nodrag nopan size-7 shrink-0 text-muted-foreground"
-                aria-label="Node actions"
-              >
-                <span className="text-lg leading-none">
-                  <Play />
-                </span>
-              </Button>*/}
-
               <Button
                 type="button"
                 variant="ghost"
@@ -279,7 +309,11 @@ export function BaseNode({
                             {parameter.name}
                           </p>
                           <p className="mt-0.5 truncate text-[11px] text-muted-foreground">
-                            Default: {parameter.defaultValue || "Not set"}
+                            Default:{" "}
+                            {summarizeDefault(
+                              parameter.type,
+                              parameter.defaultValue,
+                            )}
                           </p>
                         </div>
 
@@ -351,14 +385,6 @@ export function BaseNode({
           )}
 
           <Separator />
-
-          {/*<NodeOutput
-            status={status}
-            outputs={data.io?.outputs ?? []}
-            value={runtimeOutput}
-          />
-
-          <Separator />*/}
 
           <CardFooter className="flex min-h-10 items-center justify-between gap-2 px-3.5 py-2">
             <>
