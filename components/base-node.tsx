@@ -34,7 +34,7 @@ function summarizeDefault(type: string, value: string): string {
 
   if (type === "JSON") {
     try {
-      return JSON.stringify(JSON.parse(value));
+      return JSON.stringify(JSON.parse(value), null, 2);
     } catch {
       return value;
     }

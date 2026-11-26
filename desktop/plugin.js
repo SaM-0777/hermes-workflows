@@ -12792,8 +12792,30 @@ function createLucideIcon(iconDataOrName, iconNode = [], aliases = []) {
   }
   return Component;
 }
-// node_modules/lucide-react/dist/esm/icons/code-xml.mjs
+
+// node_modules/lucide-react/dist/esm/icons/braces.mjs
 var __iconData = {
+  name: "braces",
+  size: 24,
+  node: [
+    [
+      "path",
+      { d: "M8 3H7a2 2 0 0 0-2 2v5a2 2 0 0 1-2 2 2 2 0 0 1 2 2v5c0 1.1.9 2 2 2h1", key: "ezmyqa" }
+    ],
+    [
+      "path",
+      {
+        d: "M16 21h1a2 2 0 0 0 2-2v-5c0-1.1.9-2 2-2a2 2 0 0 1-2-2V5a2 2 0 0 0-2-2h-1",
+        key: "e1hn23"
+      }
+    ]
+  ],
+  aliases: ["curly-braces"]
+};
+__iconData.node;
+var Braces = createLucideIcon(__iconData);
+// node_modules/lucide-react/dist/esm/icons/code-xml.mjs
+var __iconData2 = {
   name: "code-xml",
   size: 24,
   node: [
@@ -12803,10 +12825,10 @@ var __iconData = {
   ],
   aliases: ["code-2"]
 };
-__iconData.node;
-var CodeXml = createLucideIcon(__iconData);
+__iconData2.node;
+var CodeXml = createLucideIcon(__iconData2);
 // node_modules/lucide-react/dist/esm/icons/ellipsis.mjs
-var __iconData2 = {
+var __iconData3 = {
   name: "ellipsis",
   size: 24,
   node: [
@@ -12816,19 +12838,19 @@ var __iconData2 = {
   ],
   aliases: ["more-horizontal"]
 };
-__iconData2.node;
-var Ellipsis = createLucideIcon(__iconData2);
+__iconData3.node;
+var Ellipsis = createLucideIcon(__iconData3);
 // node_modules/lucide-react/dist/esm/icons/loader-circle.mjs
-var __iconData3 = {
+var __iconData4 = {
   name: "loader-circle",
   size: 24,
   node: [["path", { d: "M21 12a9 9 0 1 1-6.219-8.56", key: "13zald" }]],
   aliases: ["loader-2"]
 };
-__iconData3.node;
-var LoaderCircle = createLucideIcon(__iconData3);
+__iconData4.node;
+var LoaderCircle = createLucideIcon(__iconData4);
 // node_modules/lucide-react/dist/esm/icons/shield-exclamation-point.mjs
-var __iconData4 = {
+var __iconData5 = {
   name: "shield-exclamation-point",
   size: 24,
   node: [
@@ -12844,10 +12866,10 @@ var __iconData4 = {
   ],
   aliases: ["shield-alert"]
 };
-__iconData4.node;
-var ShieldExclamationPoint = createLucideIcon(__iconData4);
+__iconData5.node;
+var ShieldExclamationPoint = createLucideIcon(__iconData5);
 // node_modules/lucide-react/dist/esm/icons/square-pen.mjs
-var __iconData5 = {
+var __iconData6 = {
   name: "square-pen",
   size: 24,
   node: [
@@ -12862,10 +12884,10 @@ var __iconData5 = {
   ],
   aliases: ["pen-box", "edit", "pen-square"]
 };
-__iconData5.node;
-var SquarePen = createLucideIcon(__iconData5);
+__iconData6.node;
+var SquarePen = createLucideIcon(__iconData6);
 // node_modules/lucide-react/dist/esm/icons/trash.mjs
-var __iconData6 = {
+var __iconData7 = {
   name: "trash",
   size: 24,
   node: [
@@ -12877,10 +12899,10 @@ var __iconData6 = {
   ],
   aliases: ["trash-2"]
 };
-__iconData6.node;
-var Trash = createLucideIcon(__iconData6);
+__iconData7.node;
+var Trash = createLucideIcon(__iconData7);
 // node_modules/lucide-react/dist/esm/icons/triangle-exclamation-point.mjs
-var __iconData7 = {
+var __iconData8 = {
   name: "triangle-exclamation-point",
   size: 24,
   node: [
@@ -12896,10 +12918,10 @@ var __iconData7 = {
   ],
   aliases: ["alert-triangle", "triangle-alert"]
 };
-__iconData7.node;
-var TriangleExclamationPoint = createLucideIcon(__iconData7);
+__iconData8.node;
+var TriangleExclamationPoint = createLucideIcon(__iconData8);
 // node_modules/lucide-react/dist/esm/icons/blocks.mjs
-var __iconData8 = {
+var __iconData9 = {
   name: "blocks",
   size: 24,
   node: [
@@ -12913,42 +12935,42 @@ var __iconData8 = {
     ["rect", { x: "14", y: "2", width: "8", height: "8", rx: "1", key: "88lufb" }]
   ]
 };
-__iconData8.node;
-var Blocks = createLucideIcon(__iconData8);
+__iconData9.node;
+var Blocks = createLucideIcon(__iconData9);
 // node_modules/lucide-react/dist/esm/icons/check.mjs
-var __iconData9 = {
+var __iconData10 = {
   name: "check",
   size: 24,
   node: [["path", { d: "M20 6 9 17l-5-5", key: "1gmf2c" }]]
 };
-__iconData9.node;
-var Check = createLucideIcon(__iconData9);
+__iconData10.node;
+var Check = createLucideIcon(__iconData10);
 // node_modules/lucide-react/dist/esm/icons/chevron-down.mjs
-var __iconData10 = {
+var __iconData11 = {
   name: "chevron-down",
   size: 24,
   node: [["path", { d: "m6 9 6 6 6-6", key: "qrunsl" }]]
 };
-__iconData10.node;
-var ChevronDown = createLucideIcon(__iconData10);
+__iconData11.node;
+var ChevronDown = createLucideIcon(__iconData11);
 // node_modules/lucide-react/dist/esm/icons/chevron-right.mjs
-var __iconData11 = {
+var __iconData12 = {
   name: "chevron-right",
   size: 24,
   node: [["path", { d: "m9 18 6-6-6-6", key: "mthhwq" }]]
 };
-__iconData11.node;
-var ChevronRight = createLucideIcon(__iconData11);
+__iconData12.node;
+var ChevronRight = createLucideIcon(__iconData12);
 // node_modules/lucide-react/dist/esm/icons/chevron-up.mjs
-var __iconData12 = {
+var __iconData13 = {
   name: "chevron-up",
   size: 24,
   node: [["path", { d: "m18 15-6-6-6 6", key: "153udz" }]]
 };
-__iconData12.node;
-var ChevronUp = createLucideIcon(__iconData12);
+__iconData13.node;
+var ChevronUp = createLucideIcon(__iconData13);
 // node_modules/lucide-react/dist/esm/icons/download.mjs
-var __iconData13 = {
+var __iconData14 = {
   name: "download",
   size: 24,
   node: [
@@ -12957,10 +12979,10 @@ var __iconData13 = {
     ["path", { d: "m7 10 5 5 5-5", key: "brsn70" }]
   ]
 };
-__iconData13.node;
-var Download = createLucideIcon(__iconData13);
+__iconData14.node;
+var Download = createLucideIcon(__iconData14);
 // node_modules/lucide-react/dist/esm/icons/external-link.mjs
-var __iconData14 = {
+var __iconData15 = {
   name: "external-link",
   size: 24,
   node: [
@@ -12969,10 +12991,10 @@ var __iconData14 = {
     ["path", { d: "M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6", key: "a6xqqp" }]
   ]
 };
-__iconData14.node;
-var ExternalLink = createLucideIcon(__iconData14);
+__iconData15.node;
+var ExternalLink = createLucideIcon(__iconData15);
 // node_modules/lucide-react/dist/esm/icons/eye.mjs
-var __iconData15 = {
+var __iconData16 = {
   name: "eye",
   size: 24,
   node: [
@@ -12986,10 +13008,10 @@ var __iconData15 = {
     ["circle", { cx: "12", cy: "12", r: "3", key: "1v7zrd" }]
   ]
 };
-__iconData15.node;
-var Eye = createLucideIcon(__iconData15);
+__iconData16.node;
+var Eye = createLucideIcon(__iconData16);
 // node_modules/lucide-react/dist/esm/icons/file-up.mjs
-var __iconData16 = {
+var __iconData17 = {
   name: "file-up",
   size: 24,
   node: [
@@ -13005,10 +13027,10 @@ var __iconData16 = {
     ["path", { d: "m15 15-3-3-3 3", key: "15xj92" }]
   ]
 };
-__iconData16.node;
-var FileUp = createLucideIcon(__iconData16);
+__iconData17.node;
+var FileUp = createLucideIcon(__iconData17);
 // node_modules/lucide-react/dist/esm/icons/file.mjs
-var __iconData17 = {
+var __iconData18 = {
   name: "file",
   size: 24,
   node: [
@@ -13022,10 +13044,10 @@ var __iconData17 = {
     ["path", { d: "M14 2v5a1 1 0 0 0 1 1h5", key: "wfsgrz" }]
   ]
 };
-__iconData17.node;
-var File2 = createLucideIcon(__iconData17);
+__iconData18.node;
+var File2 = createLucideIcon(__iconData18);
 // node_modules/lucide-react/dist/esm/icons/folder-open.mjs
-var __iconData18 = {
+var __iconData19 = {
   name: "folder-open",
   size: 24,
   node: [
@@ -13038,10 +13060,10 @@ var __iconData18 = {
     ]
   ]
 };
-__iconData18.node;
-var FolderOpen = createLucideIcon(__iconData18);
+__iconData19.node;
+var FolderOpen = createLucideIcon(__iconData19);
 // node_modules/lucide-react/dist/esm/icons/grip.mjs
-var __iconData19 = {
+var __iconData20 = {
   name: "grip",
   size: 24,
   node: [
@@ -13056,10 +13078,10 @@ var __iconData19 = {
     ["circle", { cx: "5", cy: "19", r: "1", key: "bfqh0e" }]
   ]
 };
-__iconData19.node;
-var Grip = createLucideIcon(__iconData19);
+__iconData20.node;
+var Grip = createLucideIcon(__iconData20);
 // node_modules/lucide-react/dist/esm/icons/link-2.mjs
-var __iconData20 = {
+var __iconData21 = {
   name: "link-2",
   size: 24,
   node: [
@@ -13068,10 +13090,10 @@ var __iconData20 = {
     ["line", { x1: "8", x2: "16", y1: "12", y2: "12", key: "1jonct" }]
   ]
 };
-__iconData20.node;
-var Link2 = createLucideIcon(__iconData20);
+__iconData21.node;
+var Link2 = createLucideIcon(__iconData21);
 // node_modules/lucide-react/dist/esm/icons/maximize-2.mjs
-var __iconData21 = {
+var __iconData22 = {
   name: "maximize-2",
   size: 24,
   node: [
@@ -13081,10 +13103,10 @@ var __iconData21 = {
     ["path", { d: "M9 21H3v-6", key: "wtvkvv" }]
   ]
 };
-__iconData21.node;
-var Maximize2 = createLucideIcon(__iconData21);
+__iconData22.node;
+var Maximize2 = createLucideIcon(__iconData22);
 // node_modules/lucide-react/dist/esm/icons/minimize-2.mjs
-var __iconData22 = {
+var __iconData23 = {
   name: "minimize-2",
   size: 24,
   node: [
@@ -13094,10 +13116,10 @@ var __iconData22 = {
     ["path", { d: "M4 14h6v6", key: "rmj7iw" }]
   ]
 };
-__iconData22.node;
-var Minimize2 = createLucideIcon(__iconData22);
+__iconData23.node;
+var Minimize2 = createLucideIcon(__iconData23);
 // node_modules/lucide-react/dist/esm/icons/pencil.mjs
-var __iconData23 = {
+var __iconData24 = {
   name: "pencil",
   size: 24,
   node: [
@@ -13111,10 +13133,10 @@ var __iconData23 = {
     ["path", { d: "m15 5 4 4", key: "1mk7zo" }]
   ]
 };
-__iconData23.node;
-var Pencil = createLucideIcon(__iconData23);
+__iconData24.node;
+var Pencil = createLucideIcon(__iconData24);
 // node_modules/lucide-react/dist/esm/icons/pin-off.mjs
-var __iconData24 = {
+var __iconData25 = {
   name: "pin-off",
   size: 24,
   node: [
@@ -13130,10 +13152,10 @@ var __iconData24 = {
     ]
   ]
 };
-__iconData24.node;
-var PinOff = createLucideIcon(__iconData24);
+__iconData25.node;
+var PinOff = createLucideIcon(__iconData25);
 // node_modules/lucide-react/dist/esm/icons/pin.mjs
-var __iconData25 = {
+var __iconData26 = {
   name: "pin",
   size: 24,
   node: [
@@ -13147,10 +13169,10 @@ var __iconData25 = {
     ]
   ]
 };
-__iconData25.node;
-var Pin = createLucideIcon(__iconData25);
+__iconData26.node;
+var Pin = createLucideIcon(__iconData26);
 // node_modules/lucide-react/dist/esm/icons/play.mjs
-var __iconData26 = {
+var __iconData27 = {
   name: "play",
   size: 24,
   node: [
@@ -13163,10 +13185,10 @@ var __iconData26 = {
     ]
   ]
 };
-__iconData26.node;
-var Play = createLucideIcon(__iconData26);
+__iconData27.node;
+var Play = createLucideIcon(__iconData27);
 // node_modules/lucide-react/dist/esm/icons/plus.mjs
-var __iconData27 = {
+var __iconData28 = {
   name: "plus",
   size: 24,
   node: [
@@ -13174,10 +13196,10 @@ var __iconData27 = {
     ["path", { d: "M12 5v14", key: "s699le" }]
   ]
 };
-__iconData27.node;
-var Plus = createLucideIcon(__iconData27);
+__iconData28.node;
+var Plus = createLucideIcon(__iconData28);
 // node_modules/lucide-react/dist/esm/icons/save.mjs
-var __iconData28 = {
+var __iconData29 = {
   name: "save",
   size: 24,
   node: [
@@ -13192,10 +13214,10 @@ var __iconData28 = {
     ["path", { d: "M7 3v4a1 1 0 0 0 1 1h7", key: "t51u73" }]
   ]
 };
-__iconData28.node;
-var Save = createLucideIcon(__iconData28);
+__iconData29.node;
+var Save = createLucideIcon(__iconData29);
 // node_modules/lucide-react/dist/esm/icons/search-x.mjs
-var __iconData29 = {
+var __iconData30 = {
   name: "search-x",
   size: 24,
   node: [
@@ -13205,10 +13227,10 @@ var __iconData29 = {
     ["path", { d: "m21 21-4.3-4.3", key: "1qie3q" }]
   ]
 };
-__iconData29.node;
-var SearchX = createLucideIcon(__iconData29);
+__iconData30.node;
+var SearchX = createLucideIcon(__iconData30);
 // node_modules/lucide-react/dist/esm/icons/search.mjs
-var __iconData30 = {
+var __iconData31 = {
   name: "search",
   size: 24,
   node: [
@@ -13216,18 +13238,18 @@ var __iconData30 = {
     ["circle", { cx: "11", cy: "11", r: "8", key: "4ej97u" }]
   ]
 };
-__iconData30.node;
-var Search = createLucideIcon(__iconData30);
+__iconData31.node;
+var Search = createLucideIcon(__iconData31);
 // node_modules/lucide-react/dist/esm/icons/square.mjs
-var __iconData31 = {
+var __iconData32 = {
   name: "square",
   size: 24,
   node: [["rect", { width: "18", height: "18", x: "3", y: "3", rx: "2", key: "afitv7" }]]
 };
-__iconData31.node;
-var Square = createLucideIcon(__iconData31);
+__iconData32.node;
+var Square = createLucideIcon(__iconData32);
 // node_modules/lucide-react/dist/esm/icons/upload.mjs
-var __iconData32 = {
+var __iconData33 = {
   name: "upload",
   size: 24,
   node: [
@@ -13236,10 +13258,10 @@ var __iconData32 = {
     ["path", { d: "M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4", key: "ih7n3h" }]
   ]
 };
-__iconData32.node;
-var Upload = createLucideIcon(__iconData32);
+__iconData33.node;
+var Upload = createLucideIcon(__iconData33);
 // node_modules/lucide-react/dist/esm/icons/x.mjs
-var __iconData33 = {
+var __iconData34 = {
   name: "x",
   size: 24,
   node: [
@@ -13247,8 +13269,8 @@ var __iconData33 = {
     ["path", { d: "m6 6 12 12", key: "d8bk6v" }]
   ]
 };
-__iconData33.node;
-var X = createLucideIcon(__iconData33);
+__iconData34.node;
+var X = createLucideIcon(__iconData34);
 // lib/control-flow.ts
 var CONTROL_OUT_HANDLE = "flow";
 var CONTROL_IN_HANDLE = "then";
@@ -57958,7 +57980,8 @@ var dataTypes = [
   "Dataset",
   "Images",
   "Videos",
-  "Audios"
+  "Audios",
+  "JSON"
 ];
 function getPortValue(values, name) {
   if (typeof values !== "object" || values === null || Array.isArray(values) || !Object.prototype.hasOwnProperty.call(values, name)) {
@@ -58757,6 +58780,63 @@ function Textarea({ className, ...props }) {
 
 // components/node-fields/json-field.tsx
 import { jsx as jsx32, jsxs as jsxs18 } from "react/jsx-runtime";
+function parse5(value2) {
+  try {
+    return { ok: true, value: JSON.parse(value2) };
+  } catch (error62) {
+    return { ok: false, error: error62 instanceof Error ? error62.message : "Invalid JSON" };
+  }
+}
+function JsonField({ value: value2, onChange, invalid: invalid2 }) {
+  const result = useMemo54(() => value2.trim() ? parse5(value2) : null, [value2]);
+  const isObjectInput = result?.ok && typeof result.value === "object";
+  return /* @__PURE__ */ jsxs18("div", {
+    className: "space-y-1.5",
+    children: [
+      /* @__PURE__ */ jsxs18("div", {
+        className: "relative",
+        children: [
+          /* @__PURE__ */ jsx32(Textarea, {
+            value: value2,
+            rows: 4,
+            spellCheck: false,
+            placeholder: `{
+  "key": "value"
+}`,
+            "aria-invalid": invalid2 || result && !result.ok || undefined,
+            className: "min-h-24 resize-y font-mono text-xs leading-5",
+            onChange: (event) => onChange(event.target.value)
+          }),
+          /* @__PURE__ */ jsxs18(Button8, {
+            type: "button",
+            variant: "ghost",
+            size: "sm",
+            className: "absolute right-1.5 top-1.5 h-6 gap-1 px-1.5 text-[11px] text-muted-foreground",
+            disabled: !result?.ok || !isObjectInput,
+            onClick: () => {
+              if (!result?.ok)
+                return;
+              onChange(JSON.stringify(result.value, null, 2));
+            },
+            children: [
+              /* @__PURE__ */ jsx32(Braces, {
+                className: "size-3"
+              }),
+              "Format"
+            ]
+          })
+        ]
+      }),
+      result && !result.ok ? /* @__PURE__ */ jsx32("p", {
+        className: cn2("text-[11px] text-destructive"),
+        children: result.error
+      }) : /* @__PURE__ */ jsx32("p", {
+        className: "text-[11px] text-muted-foreground",
+        children: result?.ok ? "Valid JSON." : "An object or array. Passed to the node as a JSON string."
+      })
+    ]
+  });
+}
 
 // components/node-fields/text-field.tsx
 import { jsx as jsx33 } from "react/jsx-runtime";
@@ -58816,6 +58896,12 @@ function ParameterValueField({
       });
     case "Audios":
       return /* @__PURE__ */ jsx35(AudiosField, {
+        value: value2,
+        onChange,
+        invalid: invalid2
+      });
+    case "JSON":
+      return /* @__PURE__ */ jsx35(JsonField, {
         value: value2,
         onChange,
         invalid: invalid2
@@ -61413,7 +61499,7 @@ function ImageGallery({
 }
 function ValueContent({ type, value: value2 }) {
   const normalizedType = type.toLowerCase();
-  if (normalizedType === "string" || normalizedType === "text") {
+  if (normalizedType === "string" || normalizedType === "text" || normalizedType === "json") {
     if (typeof value2 === "string" && isImageUrl(value2)) {
       return /* @__PURE__ */ jsxs23("div", {
         className: "space-y-2",
@@ -61427,6 +61513,18 @@ function ValueContent({ type, value: value2 }) {
             children: value2
           })
         ]
+      });
+    }
+    if (normalizedType === "json") {
+      let text;
+      try {
+        text = JSON.stringify(typeof value2 === "string" ? JSON.parse(value2) : value2, null, 2);
+      } catch {
+        text = String(value2);
+      }
+      return /* @__PURE__ */ jsx41("pre", {
+        className: "max-h-64 overflow-auto whitespace-pre-wrap wrap-break-word font-mono text-xs leading-relaxed",
+        children: text
       });
     }
     return /* @__PURE__ */ jsx41("p", {
@@ -61446,7 +61544,7 @@ function ValueContent({ type, value: value2 }) {
       children: value2 ? "True" : "False"
     });
   }
-  if (normalizedType === "image") {
+  if (normalizedType === "image" || normalizedType === "images") {
     const url2 = getUrl(value2);
     return url2 ? /* @__PURE__ */ jsx41("img", {
       src: url2,
@@ -61457,7 +61555,7 @@ function ValueContent({ type, value: value2 }) {
       children: "Invalid image value"
     });
   }
-  if (normalizedType === "video") {
+  if (normalizedType === "video" || normalizedType === "videos") {
     const url2 = getUrl(value2);
     return url2 ? /* @__PURE__ */ jsx41("video", {
       src: url2,
@@ -61468,7 +61566,7 @@ function ValueContent({ type, value: value2 }) {
       children: "Invalid video value"
     });
   }
-  if (normalizedType === "audio") {
+  if (normalizedType === "audio" || normalizedType === "audios") {
     const url2 = getUrl(value2);
     return url2 ? /* @__PURE__ */ jsx41("audio", {
       src: url2,
@@ -61605,7 +61703,7 @@ function summarizeDefault(type, value2) {
   if (type === "Images" || type === "Videos" || type === "Audios" || type === "Files") {}
   if (type === "JSON") {
     try {
-      return JSON.stringify(JSON.parse(value2));
+      return JSON.stringify(JSON.parse(value2), null, 2);
     } catch {
       return value2;
     }
@@ -63523,7 +63621,7 @@ function validate2(uuid3) {
 }
 
 // node_modules/@langchain/core/dist/utils/uuid/parse.js
-function parse5(uuid3) {
+function parse6(uuid3) {
   if (!validate2(uuid3))
     throw TypeError("Invalid UUID");
   let v;
@@ -63732,9 +63830,9 @@ var DNS = "6ba7b810-9dad-11d1-80b4-00c04fd430c8";
 var URL2 = "6ba7b811-9dad-11d1-80b4-00c04fd430c8";
 function v35(version3, hash2, value2, namespace2, buf, offset4) {
   const valueBytes = typeof value2 === "string" ? stringToBytes(value2) : value2;
-  const namespaceBytes = typeof namespace2 === "string" ? parse5(namespace2) : namespace2;
+  const namespaceBytes = typeof namespace2 === "string" ? parse6(namespace2) : namespace2;
   if (typeof namespace2 === "string")
-    namespace2 = parse5(namespace2);
+    namespace2 = parse6(namespace2);
   if (namespace2?.length !== 16)
     throw TypeError("Namespace must be array-like (16 iterable integer values, 0-255)");
   let bytes = new Uint8Array(16 + valueBytes.length);
@@ -63763,7 +63861,7 @@ v5.URL = URL2;
 
 // node_modules/@langchain/core/dist/utils/uuid/v1ToV6.js
 function v1ToV6(uuid3) {
-  const v6Bytes = _v1ToV6(typeof uuid3 === "string" ? parse5(uuid3) : uuid3);
+  const v6Bytes = _v1ToV6(typeof uuid3 === "string" ? parse6(uuid3) : uuid3);
   return typeof uuid3 === "string" ? unsafeStringify(v6Bytes) : v6Bytes;
 }
 function _v1ToV6(v1Bytes2) {
@@ -63856,7 +63954,7 @@ function version3(uuid3) {
 var uuid_exports = /* @__PURE__ */ __exportAll({
   MAX: () => MAX,
   NIL: () => NIL,
-  parse: () => parse6,
+  parse: () => parse7,
   stringify: () => stringify2,
   v1: () => v12,
   v4: () => v42,
@@ -63868,7 +63966,7 @@ var uuid_exports = /* @__PURE__ */ __exportAll({
 });
 var MAX = max_default;
 var NIL = nil_default;
-var parse6 = parse5;
+var parse7 = parse6;
 var stringify2 = stringify;
 var v12 = v1;
 var v42 = v4;
@@ -68298,14 +68396,14 @@ function validate4(uuid3) {
 var validate_default = validate4;
 
 // node_modules/langsmith/lib/utils/uuid/src/parse.mjs
-function parse7(uuid3) {
+function parse8(uuid3) {
   if (!validate_default(uuid3)) {
     throw TypeError("Invalid UUID");
   }
   let v;
   return Uint8Array.of((v = parseInt(uuid3.slice(0, 8), 16)) >>> 24, v >>> 16 & 255, v >>> 8 & 255, v & 255, (v = parseInt(uuid3.slice(9, 13), 16)) >>> 8, v & 255, (v = parseInt(uuid3.slice(14, 18), 16)) >>> 8, v & 255, (v = parseInt(uuid3.slice(19, 23), 16)) >>> 8, v & 255, (v = parseInt(uuid3.slice(24, 36), 16)) / 1099511627776 & 255, v / 4294967296 & 255, v >>> 24 & 255, v >>> 16 & 255, v >>> 8 & 255, v & 255);
 }
-var parse_default = parse7;
+var parse_default = parse8;
 // node_modules/langsmith/lib/utils/uuid/src/stringify.mjs
 var byteToHex2 = [];
 for (let i3 = 0;i3 < 256; ++i3) {
@@ -74733,9 +74831,9 @@ function _checkBackendVersion(backendVersion, minVersion) {
   if (!backendVersion) {
     return;
   }
-  const parse8 = (v) => v.split(".").map((s3) => parseInt(s3, 10));
-  const [maj, min2, pat] = parse8(backendVersion);
-  const [rMaj, rMin, rPat] = parse8(minVersion);
+  const parse9 = (v) => v.split(".").map((s3) => parseInt(s3, 10));
+  const [maj, min2, pat] = parse9(backendVersion);
+  const [rMaj, rMin, rPat] = parse9(minVersion);
   if (isNaN(maj) || isNaN(min2) || isNaN(pat) || isNaN(rMaj) || isNaN(rMin) || isNaN(rPat)) {
     console.warn(`[LANGSMITH]: Could not parse backend version ${JSON.stringify(backendVersion)} for compatibility check.`);
     return;
@@ -100091,7 +100189,7 @@ Writer.prototype.clearCache = function clearCache() {
     this.templateCache.clear();
   }
 };
-Writer.prototype.parse = function parse8(template, tags) {
+Writer.prototype.parse = function parse9(template, tags) {
   var cache2 = this.templateCache;
   var cacheKey = template + ":" + (tags || mustache.tags).join(":");
   var isCacheEnabled = typeof cache2 !== "undefined";
@@ -100244,7 +100342,7 @@ var defaultWriter = new Writer;
 mustache.clearCache = function clearCache2() {
   return defaultWriter.clearCache();
 };
-mustache.parse = function parse9(template, tags) {
+mustache.parse = function parse10(template, tags) {
   return defaultWriter.parse(template, tags);
 };
 mustache.render = function render2(template, view, partials, config2) {

@@ -4,6 +4,7 @@ DATA_TYPES = [
     "Images",
     "Videos",
     "Audios",
+    "JSON",
 ]
 
 # Schemas

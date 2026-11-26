@@ -18,8 +18,7 @@ export const dataTypes = [
   "Images",
   "Videos",
   "Audios",
-  //"Files",
-  //"JSON",
+  "JSON",
 ] as const;
 
 export function getPortValue(

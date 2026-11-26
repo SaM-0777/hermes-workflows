@@ -38,17 +38,25 @@ export function ParameterValueField({
     case "Text":
       return <TextField value={value} onChange={onChange} invalid={invalid} />;
     case "Dataset":
-      return <DatasetField value={value} onChange={onChange} invalid={invalid} />;
+      return (
+        <DatasetField value={value} onChange={onChange} invalid={invalid} />
+      );
     case "Images":
-      return <ImagesField value={value} onChange={onChange} invalid={invalid} />;
+      return (
+        <ImagesField value={value} onChange={onChange} invalid={invalid} />
+      );
     case "Videos":
-      return <VideosField value={value} onChange={onChange} invalid={invalid} />;
+      return (
+        <VideosField value={value} onChange={onChange} invalid={invalid} />
+      );
     case "Audios":
-      return <AudiosField value={value} onChange={onChange} invalid={invalid} />;
+      return (
+        <AudiosField value={value} onChange={onChange} invalid={invalid} />
+      );
     //case "Files":
     //  return <FilesField value={value} onChange={onChange} invalid={invalid} />;
-    //case "JSON":
-    //  return <JsonField value={value} onChange={onChange} invalid={invalid} />;
+    case "JSON":
+      return <JsonField value={value} onChange={onChange} invalid={invalid} />;
     default: {
       // Exhaustiveness: adding a type to dataTypes without a field fails here.
       const unreachable: never = type;

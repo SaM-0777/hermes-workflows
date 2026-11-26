@@ -23,6 +23,7 @@ _DATA_TYPES = (
     "Images",
     "Videos",
     "Audios",
+    "JSON",
 )
 
 

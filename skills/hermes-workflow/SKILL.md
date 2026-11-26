@@ -101,6 +101,7 @@ a JSON string; parse it and inspect `success` before continuing.
    | `Images` | JSON array string, such as `"[\"/data/a.png\"]"` |
    | `Videos` | JSON array string containing video path references |
    | `Audios` | JSON array string containing audio path references |
+   | `JSON` | JSON object |
 
 5. Build `data.execution.pythonCode` as a complete Python source string with
    the required `Execution` class.
