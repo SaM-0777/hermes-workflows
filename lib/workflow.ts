@@ -1,6 +1,7 @@
 import type { Edge, Node } from "@xyflow/react";
 
 import { hostRest } from "@/lib/host";
+import { normalizeNodeData, type WorkflowNode } from "@/lib/node";
 
 export type Workflow = {
   id: string;
@@ -36,14 +37,27 @@ export async function saveWorkflow(
     method: "PUT",
     body: {
       name: workflow.name,
-      nodes: workflow.nodes,
+      // Store the current vocabulary even when the caller still holds old types.
+      nodes: (workflow.nodes as WorkflowNode[]).map((node) =>
+        node.data ? { ...node, data: normalizeNodeData(node.data) } : node,
+      ),
       edges: workflow.edges,
     },
   });
 }
 
 export async function loadWorkflow(id: string): Promise<Workflow> {
-  return hostRest<Workflow>(`/workflows/${id}`, { method: "GET" });
+  const workflow = await hostRest<Workflow>(`/workflows/${id}`, {
+    method: "GET",
+  });
+
+  // Stored documents may predate the current type vocabulary.
+  return {
+    ...workflow,
+    nodes: (workflow.nodes as WorkflowNode[]).map((node) =>
+      node.data ? { ...node, data: normalizeNodeData(node.data) } : node,
+    ),
+  };
 }
 
 export async function deleteWorkflow(id: string): Promise<string> {
