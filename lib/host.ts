@@ -10,6 +10,8 @@
 export type HostRestOptions = {
   method?: "GET" | "POST" | "PUT" | "DELETE";
   body?: Record<string, unknown>;
+  /** Per-request deadline in ms; forwarded to pluginRest and overrides the app's 30s default. */
+  timeoutMs?: number;
 };
 
 export type HostRest = <T = unknown>(

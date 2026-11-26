@@ -168,6 +168,8 @@ export async function runNode(
   // build_output receives them instead of an empty dict.
   const result = await hostRest<Record<string, unknown>>("/run", {
     method: "POST",
+    // A design node calls the agent, so the node outlives the app's 30s default.
+    timeoutMs: 600_000,
     body: {
       node_id: node.id,
       code,

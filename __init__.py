@@ -136,8 +136,6 @@ def register(ctx) -> None:
         (s.ADD_WORKFLOW_EDGE, t.add_workflow_edge),
         (s.REMOVE_WORKFLOW_EDGE, t.remove_workflow_edge),
         (s.REQUEST_RUN_WORKFLOW, t.request_run_workflow),
-        (s.CHECK_WORKFLOW_RUNTIME, t.check_workflow_runtime),
-        (s.SETUP_WORKFLOW_RUNTIME, t.setup_workflow_runtime),
     )
     for schema, handler in tools:
         ctx.register_tool(
