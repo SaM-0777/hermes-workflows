@@ -1,7 +1,7 @@
 ---
 name: hermes-workflow
 description: Visual workflow studio for designing, running, and iterating on multi-step agent and automation flows inside Hermes Desktop.
-version: 0.0.1
+version: 0.2.0
 author: SaM-0777
 license: MIT
 platforms: [linux, macos, windows]
