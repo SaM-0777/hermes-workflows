@@ -1,6 +1,6 @@
 ---
 name: hermes-workflow
-description: Manage Hermes Workflow Studio nodes and saved workflows, including Python Execution classes, typed ports, configuration parameters, edges, and user-approved execution.
+description: Visual workflow studio for designing, running, and iterating on multi-step agent and automation flows inside Hermes Desktop.
 version: 0.0.1
 author: SaM-0777
 license: MIT

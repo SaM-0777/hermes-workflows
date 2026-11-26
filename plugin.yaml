@@ -30,4 +30,3 @@ provides_tools:
   - request_run_workflow
 provides_hooks:
   - pre_tool_call
-
